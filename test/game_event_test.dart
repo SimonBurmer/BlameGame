@@ -1,0 +1,75 @@
+// Unit tests for decoding backend WebSocket events into GameEvent objects.
+// Pure Dart logic — runs with `flutter test`, no emulator.
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_application_1/models/game_models.dart';
+
+void main() {
+  test('decodes player_joined', () {
+    final e = GameEvent.fromJson({
+      'type': 'player_joined',
+      'player': {'id': 'p1', 'name': 'Emma', 'score': 0, 'is_host': true},
+    });
+    expect(e, isA<PlayerJoined>());
+    expect((e as PlayerJoined).player.name, 'Emma');
+    expect(e.player.isHost, true);
+  });
+
+  test('decodes round_started with photo', () {
+    final e = GameEvent.fromJson({
+      'type': 'round_started',
+      'round_index': 2,
+      'photo': {'id': 'ph1', 'owner_id': 'p1', 'url': '/rooms/AB/photos/x.jpg'},
+    });
+    expect(e, isA<RoundStarted>());
+    final r = e as RoundStarted;
+    expect(r.roundIndex, 2);
+    expect(r.photo.ownerId, 'p1');
+  });
+
+  test('decodes round_revealed', () {
+    final e = GameEvent.fromJson({
+      'type': 'round_revealed',
+      'round_index': 0,
+      'owner_id': 'p9',
+    });
+    expect((e as RoundRevealed).ownerId, 'p9');
+  });
+
+  test('decodes guess_result', () {
+    final e = GameEvent.fromJson({
+      'type': 'guess_result',
+      'guesser_id': 'p2',
+      'points': 700,
+      'correct': true,
+    });
+    final g = e as GuessResult;
+    expect(g.points, 700);
+    expect(g.correct, true);
+  });
+
+  test('decodes game_finished with ranked players', () {
+    final e = GameEvent.fromJson({
+      'type': 'game_finished',
+      'rankings': [
+        {'id': 'p2', 'name': 'Jake', 'score': 800, 'is_host': false},
+        {'id': 'p1', 'name': 'Emma', 'score': 0, 'is_host': true},
+      ],
+    });
+    final f = e as GameFinished;
+    expect(f.rankings.first.name, 'Jake');
+    expect(f.rankings.first.score, 800);
+  });
+
+  test('unknown event type falls back to UnknownEvent', () {
+    final e = GameEvent.fromJson({'type': 'something_new'});
+    expect(e, isA<UnknownEvent>());
+  });
+
+  test('player color and avatar are stable for the same id', () {
+    const a = GamePlayer(id: 'abc', name: 'X');
+    const b = GamePlayer(id: 'abc', name: 'Y');
+    expect(a.color, b.color);
+    expect(a.avatar, b.avatar);
+  });
+}

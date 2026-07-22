@@ -1,18 +1,21 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Widget test for the home screen. Runs headless with `flutter test` — no
+// emulator. It pumps the app and checks the home UI renders, without touching
+// the network (we never tap Create/Join here).
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:flutter_application_1/main.dart';
 
 void main() {
-  testWidgets('App renders home screen', (WidgetTester tester) async {
+  testWidgets('Home screen renders title and actions', (tester) async {
     await tester.pumpWidget(const PhotoRouletteApp());
+
     expect(find.text('PHOTO\nROULETTE'), findsOneWidget);
-    expect(find.text('PLAY'), findsOneWidget);
+    expect(find.text('CREATE GAME'), findsOneWidget);
+    expect(find.text('JOIN GAME'), findsOneWidget);
+
+    // Name and game-code fields are present.
+    expect(find.byType(TextField), findsNWidgets(2));
   });
 }

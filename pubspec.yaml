@@ -35,6 +35,12 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # Backend integration
+  http: ^1.2.0                # REST calls to the FastAPI backend
+  http_parser: ^4.0.0         # MediaType for multipart photo uploads
+  web_socket_channel: ^3.0.0  # live game events over WebSocket
+  image_picker: ^1.1.0        # pick a photo from the gallery to upload
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

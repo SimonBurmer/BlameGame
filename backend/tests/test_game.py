@@ -1,0 +1,171 @@
+"""Unit tests for the Room state machine (app/game.py).
+
+These tests describe the *rules* of the game with no server involved: joining,
+starting, guessing, scoring, advancing rounds, and final rankings. Writing
+them first forces us to design a clean, testable game API.
+"""
+
+import pytest
+
+from app.models import Photo, RoomState
+from app.game import (
+    Room,
+    GameError,
+    add_player,
+    add_photo,
+    start_game,
+    submit_guess,
+    advance_round,
+    rankings,
+    current_photo,
+)
+
+
+def make_room() -> Room:
+    return Room(code="TEST1")
+
+
+# --- joining -------------------------------------------------------------
+
+def test_first_player_becomes_host():
+    room = make_room()
+    p = add_player(room, "Emma")
+    assert p.is_host is True
+    assert p.name == "Emma"
+    assert room.players == [p]
+
+
+def test_second_player_is_not_host():
+    room = make_room()
+    add_player(room, "Emma")
+    p2 = add_player(room, "Jake")
+    assert p2.is_host is False
+
+
+def test_duplicate_name_is_rejected():
+    room = make_room()
+    add_player(room, "Emma")
+    with pytest.raises(GameError):
+        add_player(room, "Emma")
+
+
+def test_each_player_gets_a_unique_id():
+    room = make_room()
+    a = add_player(room, "Emma")
+    b = add_player(room, "Jake")
+    assert a.id != b.id
+
+
+# --- photos + starting ---------------------------------------------------
+
+def test_start_requires_at_least_two_players():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    with pytest.raises(GameError):
+        start_game(room, total_rounds=3)
+
+
+def test_start_requires_at_least_one_photo():
+    room = make_room()
+    add_player(room, "Emma")
+    add_player(room, "Jake")
+    with pytest.raises(GameError):
+        start_game(room, total_rounds=3)
+
+
+def test_start_builds_rounds_and_enters_in_round():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/2.jpg")
+    start_game(room, total_rounds=2)
+    assert room.state == RoomState.IN_ROUND
+    assert len(room.rounds) == 2
+    assert room.current_round == 0
+
+
+def test_cannot_start_twice():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    start_game(room, total_rounds=1)
+    with pytest.raises(GameError):
+        start_game(room, total_rounds=1)
+
+
+# --- guessing + scoring --------------------------------------------------
+
+def started_room():
+    """A room mid-game with a known current photo owned by Emma."""
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    # Only Emma has a photo, so the current photo's owner is deterministic.
+    add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    start_game(room, total_rounds=1)
+    return room, emma, jake
+
+
+def test_correct_guess_awards_points():
+    room, emma, jake = started_room()
+    # Jake correctly guesses Emma with 8 seconds left.
+    points = submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    assert points == 800
+    assert room.player_by_id(jake.id).score == 800
+
+
+def test_wrong_guess_awards_nothing():
+    room, emma, jake = started_room()
+    points = submit_guess(room, guesser_id=jake.id, guessed_owner_id=jake.id, seconds_left=8)
+    assert points == 0
+    assert room.player_by_id(jake.id).score == 0
+
+
+def test_player_cannot_guess_twice_in_a_round():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    with pytest.raises(GameError):
+        submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=5)
+
+
+def test_guess_only_allowed_during_a_round():
+    room, emma, jake = started_room()
+    room.state = RoomState.REVEALING
+    with pytest.raises(GameError):
+        submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+
+
+def test_current_photo_matches_first_round():
+    room, emma, jake = started_room()
+    assert current_photo(room).owner_id == emma.id
+
+
+# --- advancing + results -------------------------------------------------
+
+def test_advance_moves_to_next_round():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/2.jpg")
+    start_game(room, total_rounds=2)
+    advance_round(room)
+    assert room.current_round == 1
+    assert room.state == RoomState.IN_ROUND
+
+
+def test_advance_past_last_round_finishes_game():
+    room, emma, jake = started_room()  # total_rounds=1
+    advance_round(room)
+    assert room.state == RoomState.FINISHED
+
+
+def test_rankings_sorted_by_score_desc():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)  # jake 800
+    ranked = rankings(room)
+    assert [p.name for p in ranked] == ["Jake", "Emma"]
+    assert ranked[0].score == 800

@@ -1,6 +1,6 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
-import '../models/player.dart';
+
+import '../state/game_controller.dart';
 import 'lobby_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -10,27 +10,55 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.08).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
+class _HomeScreenState extends State<HomeScreen> {
+  final _nameController = TextEditingController();
+  final _codeController = TextEditingController();
+  bool _busy = false;
+  String? _error;
 
   @override
   void dispose() {
-    _pulseController.dispose();
+    _nameController.dispose();
+    _codeController.dispose();
     super.dispose();
+  }
+
+  Future<void> _createRoom() => _run((c) => c.createAndHost(_name));
+
+  Future<void> _joinRoom() {
+    final code = _codeController.text.trim().toUpperCase();
+    if (code.isEmpty) {
+      setState(() => _error = 'Enter a game code to join');
+      return Future.value();
+    }
+    return _run((c) => c.joinByCode(code, _name));
+  }
+
+  String get _name {
+    final n = _nameController.text.trim();
+    return n.isEmpty ? 'Player' : n;
+  }
+
+  /// Runs an async action that sets up a GameController, then navigates to the
+  /// lobby. Shows a spinner and surfaces errors.
+  Future<void> _run(Future<void> Function(GameController) action) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final controller = GameController();
+    try {
+      await action(controller);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => LobbyScreen(controller: controller)),
+      );
+    } catch (e) {
+      controller.dispose();
+      if (mounted) setState(() => _error = 'Could not connect: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -46,263 +74,148 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         child: SafeArea(
           child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Spacer(flex: 2),
-                // App icon / logo area
-                _buildLogo(),
-                const SizedBox(height: 24),
-                // Title
-                const Text(
-                  'PHOTO\nROULETTE',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 4,
-                    height: 1.1,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Guess whose photo it is!',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white.withValues(alpha: 0.7),
-                    letterSpacing: 1,
-                  ),
-                ),
-                const Spacer(flex: 2),
-                // Play button
-                ScaleTransition(
-                  scale: _pulseAnimation,
-                  child: GestureDetector(
-                    onTap: () => _startGame(context),
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFE94560), Color(0xFFFF6B6B)],
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFFE94560).withValues(alpha: 0.5),
-                            blurRadius: 30,
-                            spreadRadius: 5,
-                          ),
-                        ],
-                      ),
-                      child: const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.play_arrow_rounded,
-                            size: 72,
-                            color: Colors.white,
-                          ),
-                          Text(
-                            'PLAY',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 4,
-                            ),
-                          ),
-                        ],
-                      ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 20),
+                  const Icon(Icons.photo_library_rounded,
+                      size: 72, color: Colors.white),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'PHOTO\nROULETTE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 44,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      letterSpacing: 4,
+                      height: 1.1,
                     ),
                   ),
-                ),
-                const Spacer(flex: 1),
-                // Bottom buttons
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildBottomButton(Icons.settings, 'Settings', () {
-                      _showSettingsSnackbar(context);
-                    }),
-                    const SizedBox(width: 40),
-                    _buildBottomButton(Icons.info_outline, 'How to Play', () {
-                      _showHowToPlay(context);
-                    }),
-                  ],
-                ),
-                const SizedBox(height: 40),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLogo() {
-    return Container(
-      width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        color: Colors.white.withValues(alpha: 0.1),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.2),
-          width: 2,
-        ),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Spinning roulette icon
-          Transform.rotate(
-            angle: pi / 12,
-            child: Icon(
-              Icons.photo_library_rounded,
-              size: 50,
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-          ),
-          Positioned(
-            bottom: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: const BoxDecoration(
-                color: Color(0xFFE94560),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.question_mark, size: 16, color: Colors.white),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBottomButton(
-    IconData icon,
-    String label,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 28),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _startGame(BuildContext context) {
-    // Reset scores
-    for (var p in mockPlayers) {
-      p.score = 0;
-    }
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => const LobbyScreen(),
-        transitionsBuilder: (_, animation, __, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-        transitionDuration: const Duration(milliseconds: 400),
-      ),
-    );
-  }
-
-  void _showSettingsSnackbar(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Settings — coming soon!'),
-        backgroundColor: const Color(0xFF0F3460),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
-
-  void _showHowToPlay(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A2E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Center(
-                child: Text(
-                  'How to Play',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
+                  const SizedBox(height: 8),
+                  Text(
+                    'Guess whose photo it is!',
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 36),
+                  _textField(_nameController, 'Your name', Icons.person),
+                  const SizedBox(height: 28),
+                  if (_error != null) ...[
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Color(0xFFE94560)),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  if (_busy)
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: CircularProgressIndicator(color: Color(0xFFE94560)),
+                    )
+                  else ...[
+                    _primaryButton('CREATE GAME', Icons.add, _createRoom),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                            child: Divider(
+                                color: Colors.white.withValues(alpha: 0.2))),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('OR JOIN',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                  fontSize: 12,
+                                  letterSpacing: 2)),
+                        ),
+                        Expanded(
+                            child: Divider(
+                                color: Colors.white.withValues(alpha: 0.2))),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _textField(_codeController, 'Game code', Icons.tag,
+                        caps: true),
+                    const SizedBox(height: 16),
+                    _secondaryButton('JOIN GAME', Icons.login, _joinRoom),
+                  ],
+                ],
               ),
-              const SizedBox(height: 20),
-              _howToPlayStep('1', 'A random photo from someone\'s gallery is shown'),
-              _howToPlayStep('2', 'The photo zooms in — slowly revealing more'),
-              _howToPlayStep('3', 'Guess whose photo it is before time runs out!'),
-              _howToPlayStep('4', 'Faster correct guesses earn more points'),
-              const SizedBox(height: 16),
-            ],
+            ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
-  Widget _howToPlayStep(String number, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: const BoxDecoration(
-              color: Color(0xFFE94560),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.85),
-                fontSize: 15,
-              ),
-            ),
-          ),
-        ],
+  Widget _textField(
+    TextEditingController controller,
+    String hint,
+    IconData icon, {
+    bool caps = false,
+  }) {
+    return TextField(
+      controller: controller,
+      textCapitalization:
+          caps ? TextCapitalization.characters : TextCapitalization.words,
+      style: const TextStyle(color: Colors.white),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+        prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.6)),
+        filled: true,
+        fillColor: Colors.white.withValues(alpha: 0.08),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _primaryButton(String label, IconData icon, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon),
+        label: Text(label,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold, letterSpacing: 2)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFE94560),
+          foregroundColor: Colors.white,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  Widget _secondaryButton(String label, IconData icon, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, color: Colors.white),
+        label: Text(label,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2)),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
       ),
     );
   }

@@ -1,7 +1,7 @@
 ---
 id: TASK-23
 title: Deploy backend to Railway
-status: In Progress
+status: Done
 assignee:
   - '@simon'
 created_date: '2026-08-18 14:50'

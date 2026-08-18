@@ -1,10 +1,10 @@
 ---
 id: TASK-1
 title: Implement real photo-roulette mechanic (auto-sample device camera roll)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-18 15:44'
 labels:
   - frontend
   - core

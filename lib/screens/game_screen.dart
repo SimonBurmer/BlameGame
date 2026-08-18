@@ -15,8 +15,7 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen>
-    with TickerProviderStateMixin {
+class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   static const int roundSeconds = 10;
 
   GameController get c => widget.controller;
@@ -25,6 +24,7 @@ class _GameScreenState extends State<GameScreen>
   Timer? _displayTimer;
   int _shownRound = -1;
   bool _navigated = false;
+  String? _myGuessedPlayerId;
 
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -65,6 +65,7 @@ class _GameScreenState extends State<GameScreen>
 
     // New round started on the backend -> restart the local display countdown.
     if (c.phase == GamePhase.inRound && c.roundIndex != _shownRound) {
+      _myGuessedPlayerId = null;
       _syncToRound();
     }
 
@@ -95,6 +96,7 @@ class _GameScreenState extends State<GameScreen>
 
   void _guess(GamePlayer player) {
     if (c.hasGuessedThisRound || c.phase != GamePhase.inRound) return;
+    _myGuessedPlayerId = player.id;
     c.guess(player.id, _timeLeft);
   }
 
@@ -141,11 +143,14 @@ class _GameScreenState extends State<GameScreen>
               color: Colors.white.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text('Round ${c.roundIndex + 1}',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600)),
+            child: Text(
+              'Round ${c.roundIndex + 1}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
@@ -157,11 +162,14 @@ class _GameScreenState extends State<GameScreen>
               children: [
                 const Icon(Icons.star, color: Color(0xFFFFD700), size: 18),
                 const SizedBox(width: 4),
-                Text('$myScore',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold)),
+                Text(
+                  '$myScore',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
@@ -172,8 +180,9 @@ class _GameScreenState extends State<GameScreen>
 
   Widget _timerBar() {
     final progress = _timeLeft / roundSeconds;
-    final color =
-        _timeLeft <= 3 ? const Color(0xFFE94560) : const Color(0xFF4ECDC4);
+    final color = _timeLeft <= 3
+        ? const Color(0xFFE94560)
+        : const Color(0xFF4ECDC4);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -183,11 +192,14 @@ class _GameScreenState extends State<GameScreen>
             children: [
               Icon(Icons.timer, color: color, size: 20),
               const SizedBox(width: 6),
-              Text('$_timeLeft',
-                  style: TextStyle(
-                      color: color,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                '$_timeLeft',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -215,21 +227,23 @@ class _GameScreenState extends State<GameScreen>
       ),
       clipBehavior: Clip.antiAlias,
       child: photo == null
-          ? const Center(
-              child: CircularProgressIndicator(color: Colors.white))
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : Image.network(
               '$apiBase${photo.url}',
               fit: BoxFit.cover,
               width: double.infinity,
               errorBuilder: (context, error, stack) => const Center(
-                child: Icon(Icons.broken_image,
-                    color: Colors.white54, size: 64),
+                child: Icon(
+                  Icons.broken_image,
+                  color: Colors.white54,
+                  size: 64,
+                ),
               ),
               loadingBuilder: (context, child, progress) => progress == null
                   ? child
                   : const Center(
-                      child:
-                          CircularProgressIndicator(color: Colors.white)),
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
             ),
     );
   }
@@ -244,8 +258,7 @@ class _GameScreenState extends State<GameScreen>
     return AnimatedBuilder(
       animation: _shakeAnimation,
       builder: (context, child) {
-        final shake =
-            correct ? 0.0 : sin(_shakeAnimation.value * 3 * pi) * 8;
+        final shake = correct ? 0.0 : sin(_shakeAnimation.value * 3 * pi) * 8;
         return Transform.translate(offset: Offset(shake, 0), child: child);
       },
       child: Container(
@@ -265,10 +278,11 @@ class _GameScreenState extends State<GameScreen>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(correct ? Icons.check_circle : Icons.cancel,
-                color:
-                    correct ? Colors.greenAccent : const Color(0xFFE94560),
-                size: 28),
+            Icon(
+              correct ? Icons.check_circle : Icons.cancel,
+              color: correct ? Colors.greenAccent : const Color(0xFFE94560),
+              size: 28,
+            ),
             const SizedBox(width: 10),
             Flexible(
               child: Text(
@@ -276,11 +290,10 @@ class _GameScreenState extends State<GameScreen>
                     ? 'Correct! +${c.lastPointsEarned} points'
                     : "It was $ownerName's photo",
                 style: TextStyle(
-                    color: correct
-                        ? Colors.greenAccent
-                        : const Color(0xFFE94560),
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold),
+                  color: correct ? Colors.greenAccent : const Color(0xFFE94560),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -291,8 +304,7 @@ class _GameScreenState extends State<GameScreen>
 
   Widget _guessButtons() {
     // You guess who took the photo — everyone except yourself is a candidate.
-    final candidates =
-        c.players.where((p) => p.id != c.myPlayerId).toList();
+    final candidates = c.players.where((p) => p.id != c.myPlayerId).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Wrap(
@@ -301,29 +313,41 @@ class _GameScreenState extends State<GameScreen>
         alignment: WrapAlignment.center,
         children: candidates.map((player) {
           final disabled = c.hasGuessedThisRound;
+          final isSelected = disabled && player.id == _myGuessedPlayerId;
           return GestureDetector(
             onTap: disabled ? null : () => _guess(player),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 18, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               decoration: BoxDecoration(
-                color: player.color
-                    .withValues(alpha: disabled ? 0.05 : 0.15),
+                color: player.color.withValues(
+                  alpha: isSelected ? 0.35 : (disabled ? 0.05 : 0.15),
+                ),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: player.color.withValues(alpha: 0.3)),
+                  color: player.color.withValues(alpha: isSelected ? 1.0 : 0.3),
+                  width: isSelected ? 2 : 1,
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(player.avatar, color: player.color, size: 20),
                   const SizedBox(width: 8),
-                  Text(player.name,
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600)),
+                  Text(
+                    player.name,
+                    style: TextStyle(
+                      color: Colors.white.withValues(
+                        alpha: isSelected ? 1.0 : 0.9,
+                      ),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (isSelected) ...[
+                    const SizedBox(width: 6),
+                    Icon(Icons.check_circle, color: player.color, size: 16),
+                  ],
                 ],
               ),
             ),

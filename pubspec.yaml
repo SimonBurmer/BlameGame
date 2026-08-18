@@ -39,7 +39,7 @@ dependencies:
   http: ^1.2.0                # REST calls to the FastAPI backend
   http_parser: ^4.0.0         # MediaType for multipart photo uploads
   web_socket_channel: ^3.0.0  # live game events over WebSocket
-  image_picker: ^1.1.0        # pick a photo from the gallery to upload
+  photo_manager: ^3.6.0       # camera-roll enumeration + photo-library permission
 
 dev_dependencies:
   flutter_test:

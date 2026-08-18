@@ -1,10 +1,10 @@
 ---
 id: TASK-1
 title: Implement real photo-roulette mechanic (auto-sample device camera roll)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-18 16:24'
 labels:
   - frontend
   - core
@@ -23,8 +23,8 @@ The defining feature of Photo Roulette is missing. Currently players manually pi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Photo-library permission is requested with an explicit permission flow (permission_handler)
-- [ ] #2 App enumerates the device camera roll and randomly samples N photos (configurable)
-- [ ] #3 Sampled photos are batch-uploaded to the room for the local player
-- [ ] #4 Manual single-pick upload is replaced or supplemented by the auto-sample flow
+- [x] #1 Photo-library permission is requested with an explicit permission flow (permission_handler)
+- [x] #2 App enumerates the device camera roll and randomly samples N photos (configurable)
+- [x] #3 Sampled photos are batch-uploaded to the room for the local player
+- [x] #4 Manual single-pick upload is replaced or supplemented by the auto-sample flow
 <!-- AC:END -->

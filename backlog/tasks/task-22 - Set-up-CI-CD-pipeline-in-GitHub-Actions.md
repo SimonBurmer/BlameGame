@@ -1,9 +1,10 @@
 ---
 id: TASK-22
 title: Set up CI/CD pipeline in GitHub Actions
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-18 14:50'
+updated_date: '2026-08-18 15:41'
 labels:
   - infra
   - cicd
@@ -22,9 +23,9 @@ There is no CI/CD. Add GitHub Actions workflows to run automated checks on every
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A GitHub Actions workflow runs 'flutter analyze' and 'flutter test' on PRs and pushes
-- [ ] #2 A workflow runs backend pytest and a Python linter on PRs and pushes
-- [ ] #3 Workflows trigger on pull_request and push to main
+- [x] #1 A GitHub Actions workflow runs 'flutter analyze' and 'flutter test' on PRs and pushes
+- [x] #2 A workflow runs backend pytest and a Python linter on PRs and pushes
+- [x] #3 Workflows trigger on pull_request and push to main
 - [ ] #4 Failing checks block the PR from merging (status checks required)
-- [ ] #5 Dependency caching is configured to keep runs fast
+- [x] #5 Dependency caching is configured to keep runs fast
 <!-- AC:END -->

@@ -15,6 +15,9 @@ const String apiBase = String.fromEnvironment(
   defaultValue: 'http://localhost:8000',
 );
 
+/// How many random photos to auto-sample from the camera roll per player.
+const int photoSampleCount = 5;
+
 /// WebSocket base URL, derived from [apiBase] by swapping the scheme
 /// (`http`->`ws`, `https`->`wss`).
 String get wsBase => apiBase.replaceFirst(RegExp(r'^http'), 'ws');

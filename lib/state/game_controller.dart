@@ -107,9 +107,29 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Host uploads a photo from the gallery (bytes already read).
-  Future<void> uploadPhoto(Uint8List bytes, {String filename = 'photo.jpg'}) async {
+  /// Uploads a single photo (bytes already read) for the local player.
+  Future<void> uploadPhoto(
+    Uint8List bytes, {
+    String filename = 'photo.jpg',
+  }) async {
     await api.uploadPhoto(roomCode!, myPlayerId!, bytes, filename: filename);
+  }
+
+  /// Batch-uploads photos for the local player. Each image is sent as its own
+  /// multipart call because the backend accepts one photo per request.
+  /// Returns the number successfully uploaded.
+  Future<int> uploadPhotos(List<Uint8List> photos) async {
+    var uploaded = 0;
+    for (var i = 0; i < photos.length; i++) {
+      await api.uploadPhoto(
+        roomCode!,
+        myPlayerId!,
+        photos[i],
+        filename: 'photo_$i.jpg',
+      );
+      uploaded++;
+    }
+    return uploaded;
   }
 
   /// Host starts the game.

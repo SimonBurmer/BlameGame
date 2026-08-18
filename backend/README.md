@@ -19,18 +19,38 @@ uvicorn app.main:app --reload
 This directory is Railway-ready:
 
 - `railway.json` — Nixpacks build + start command
-  (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`), pinned to **1 replica**.
-- `Procfile` — same start command as a fallback.
+  (`uvicorn app.main:app --host 0.0.0.0 --port $PORT`), pinned to **1 replica**,
+  with a `/health` healthcheck that gates each deploy.
 - `.python-version` — Python 3.12.
 
-Steps:
+### One-time setup (manual, in the Railway dashboard)
 
-1. In Railway, create a project from this GitHub repo.
-2. Set the **root directory** to `backend/` (so Railway builds this folder, not
-   the Flutter app at the repo root).
-3. Deploy. Railway installs the `[project].dependencies` from `pyproject.toml`
+1. Create a new project from this GitHub repo.
+2. Open the service → **Settings → Root Directory** → set it to `backend`
+   (so Railway builds this folder, not the Flutter app at the repo root).
+3. **Settings → Networking → Generate Domain** to get a public URL, e.g.
+   `https://<app>.up.railway.app`.
+4. **Variables**: `UPLOAD_DIR` is optional — it defaults to `uploads`, which
+   works out of the box. Only set it if you attach a Volume (see below).
+   `PORT` is injected by Railway; do not set it yourself.
+5. Deploy. Railway installs `[project].dependencies` from `pyproject.toml`
    (the `dev` extras are skipped in production).
-4. Note the generated public URL, e.g. `https://<app>.up.railway.app`.
+6. Verify: `curl https://<app>.up.railway.app/health` → `{"status":"ok"}`.
+
+### Automatic deploys (GitHub Actions)
+
+`.github/workflows/backend.yml` runs the backend tests on every PR and, on
+merge to `main`, deploys to Railway. It needs two things in the GitHub repo
+(**Settings → Secrets and variables → Actions**):
+
+| Kind | Name | Value |
+|------|------|-------|
+| Secret | `RAILWAY_TOKEN` | Railway → Account Settings → Tokens → create a token |
+| Variable | `RAILWAY_SERVICE` | The service name shown in the Railway project |
+
+If you'd rather not use GitHub Actions at all, Railway's own GitHub integration
+can auto-deploy on push to `main` — in that case delete the `deploy` job from
+the workflow so the two don't both deploy.
 
 ### Important constraints (by design)
 

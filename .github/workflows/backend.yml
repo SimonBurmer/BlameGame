@@ -26,6 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm install -g @railway/cli
+      # Uploads backend/ as the build root, so the Railway service must have an
+      # empty Root Directory. Setting it to "backend" as well nests the path
+      # twice and fails with "Failed to read app source directory".
       - run: railway up --service "$RAILWAY_SERVICE" --ci
         working-directory: backend
         env:

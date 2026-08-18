@@ -25,9 +25,12 @@ This directory is Railway-ready:
 
 ### One-time setup (manual, in the Railway dashboard)
 
-1. Create a new project from this GitHub repo.
-2. Open the service → **Settings → Root Directory** → set it to `backend`
-   (so Railway builds this folder, not the Flutter app at the repo root).
+1. Create a new project and add a service for this backend.
+2. Leave **Settings → Root Directory** *empty*. The GitHub Actions deploy job
+   runs `railway up` from within `backend/`, so it uploads this folder as the
+   build root already. Setting Root Directory to `backend` on top of that makes
+   Nixpacks look for `backend/backend/` and the build fails with
+   `Failed to read app source directory`.
 3. **Settings → Networking → Generate Domain** to get a public URL, e.g.
    `https://<app>.up.railway.app`.
 4. **Variables**: `UPLOAD_DIR` is optional — it defaults to `uploads`, which
@@ -36,6 +39,10 @@ This directory is Railway-ready:
 5. Deploy. Railway installs `[project].dependencies` from `pyproject.toml`
    (the `dev` extras are skipped in production).
 6. Verify: `curl https://<app>.up.railway.app/health` → `{"status":"ok"}`.
+
+> If you ever switch to Railway's own GitHub integration instead of the Actions
+> job, the opposite applies: that integration pulls the whole repo, so Root
+> Directory **must** be set to `backend`.
 
 ### Automatic deploys (GitHub Actions)
 

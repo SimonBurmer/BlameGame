@@ -80,3 +80,29 @@ backlog browser                  # web UI
 Prefer the simplest solution that actually works: reuse what's already in the codebase,
 stdlib/native before new dependencies, no abstractions or config that aren't needed yet.
 Don't simplify away input validation at trust boundaries, error handling, or security.
+
+## Local iOS dev — known gotchas (learned the hard way)
+
+- **CocoaPods is required** the moment any native plugin is added (e.g. `photo_manager`).
+  Without it, `flutter run` fails at "CocoaPods not installed" — and because the failed
+  run doesn't replace what's on the simulator, you're left staring at whatever old build
+  happens to be installed, which looks like "nothing changed" rather than a clear error.
+  Install once: `brew install cocoapods` (no `sudo` needed via Homebrew).
+- **A stale app on the simulator looks exactly like "my change didn't work."** Symptoms:
+  buttons don't do anything, UI shows data/copy that doesn't exist anywhere in `lib/`,
+  and the backend log shows zero incoming requests. Confirm which build is actually
+  running before debugging app logic — check `ps`/`pgrep -fl "flutter run"` for a live
+  session, and grep `lib/` for suspicious UI text before assuming it's a code bug.
+  Fix: fully quit (`q` in the `flutter run` terminal, not hot reload/restart — new native
+  plugins need a real rebuild), and if needed `xcrun simctl uninstall booted <bundle-id>`
+  first, then relaunch clean.
+- **A subagent's "done, verified" claim needs re-checking when the agent couldn't run the
+  toolchain.** One subagent guessed a `photo_manager` API name
+  (`requestPermissionExtended`) that didn't exist (real method: `requestPermissionExtend`)
+  because it had no `flutter`/`dart` on PATH to catch it. `flutter analyze` caught it in
+  under 2 seconds once run for real. Always run analyze/test yourself against actual
+  installed package sources before merging subagent-written code that touches an external
+  API surface.
+- **Local multiplayer testing** needs 2+ players; use `scripts/run-local-multiplayer.sh`
+  to boot two simulators + backend + Backlog board in one shot rather than juggling
+  multiple manual `flutter run` sessions by hand.

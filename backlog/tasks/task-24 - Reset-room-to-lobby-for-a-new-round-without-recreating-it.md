@@ -1,9 +1,10 @@
 ---
 id: TASK-24
 title: Reset room to lobby for a new round without recreating it
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 16:23'
+updated_date: '2026-08-21 23:04'
 labels:
   - backend
   - frontend
@@ -23,8 +24,8 @@ There is currently no way to start another round with the same room/players once
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Backend supports resetting a room's state back to LOBBY (or starting a fresh round set) while keeping the same room code and player list
-- [ ] #2 Player scores are reset for the new round (or explicitly carried over — pick one and document it)
-- [ ] #3 Lobby screen shows a 'Start New Round' action (host-only) when the room is resettable, not just at first creation
-- [ ] #4 Existing players stay connected via their existing WebSocket without needing to rejoin
+- [x] #1 Backend supports resetting a room's state back to LOBBY (or starting a fresh round set) while keeping the same room code and player list
+- [x] #2 Player scores are reset for the new round (or explicitly carried over — pick one and document it)
+- [x] #3 Lobby screen shows a 'Start New Round' action (host-only) when the room is resettable, not just at first creation
+- [x] #4 Existing players stay connected via their existing WebSocket without needing to rejoin
 <!-- AC:END -->

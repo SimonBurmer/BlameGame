@@ -159,3 +159,70 @@ def test_only_host_can_start(client):
         json={"host_id": jake_id, "total_rounds": 1, "round_seconds": 0},
     )
     assert resp.status_code == 403
+
+
+# --- resetting -------------------------------------------------------------
+
+def test_host_can_reset_finished_room(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    client.post(
+        f"/rooms/{code}/start",
+        json={"host_id": host_id, "total_rounds": 1, "round_seconds": 0},
+    )
+
+    resp = client.post(f"/rooms/{code}/reset", json={"host_id": host_id})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["state"] == "lobby"
+    assert body["total_rounds"] == 0
+    assert {p["score"] for p in body["players"]} == {0}
+    # Same room code, same players -- no rejoin needed.
+    assert body["code"] == code
+    assert {p["name"] for p in body["players"]} == {"Emma", "Jake"}
+
+
+def test_only_host_can_reset(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    resp = client.post(f"/rooms/{code}/reset", json={"host_id": jake_id})
+    assert resp.status_code == 403
+
+
+def test_reset_unknown_room_404(client):
+    resp = client.post("/rooms/ZZZZZ/reset", json={"host_id": "whoever"})
+    assert resp.status_code == 404
+
+
+def test_cannot_reset_room_mid_round(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    client.post(
+        f"/rooms/{code}/start",
+        json={"host_id": host_id, "total_rounds": 2, "round_seconds": 30},
+    )
+
+    resp = client.post(f"/rooms/{code}/reset", json={"host_id": host_id})
+    assert resp.status_code == 400
+
+
+def test_reset_broadcasts_room_reset_event(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    client.post(
+        f"/rooms/{code}/start",
+        json={"host_id": host_id, "total_rounds": 1, "round_seconds": 0},
+    )
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        client.post(f"/rooms/{code}/reset", json={"host_id": host_id})
+        event = ws.receive_json()
+        assert event["type"] == "room_reset"
+        assert {p["name"] for p in event["players"]} == {"Emma", "Jake"}

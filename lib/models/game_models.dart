@@ -96,6 +96,12 @@ sealed class GameEvent {
               .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
               .toList(),
         );
+      case 'room_reset':
+        return RoomReset(
+          (json['players'] as List<dynamic>)
+              .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
+              .toList(),
+        );
       default:
         return UnknownEvent(json['type'] as String);
     }
@@ -133,6 +139,11 @@ class GuessResult extends GameEvent {
 class GameFinished extends GameEvent {
   final List<GamePlayer> rankings;
   const GameFinished(this.rankings);
+}
+
+class RoomReset extends GameEvent {
+  final List<GamePlayer> players;
+  const RoomReset(this.players);
 }
 
 class UnknownEvent extends GameEvent {

@@ -2,12 +2,58 @@ import 'package:flutter/material.dart';
 
 import '../models/game_models.dart';
 import '../state/game_controller.dart';
+import 'lobby_screen.dart';
 
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   final GameController controller;
   const ResultsScreen({super.key, required this.controller});
 
+  @override
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
+
+class _ResultsScreenState extends State<ResultsScreen> {
+  GameController get controller => widget.controller;
+  bool _resetting = false;
+  bool _navigated = false;
+
   List<GamePlayer> get _ranked => controller.finalRankings;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    // Any player (not just the host who triggered it) lands back in the
+    // lobby once the backend confirms the reset over the WebSocket.
+    if (!_navigated && controller.phase == GamePhase.lobby) {
+      _navigated = true;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => LobbyScreen(controller: controller)),
+      );
+    }
+  }
+
+  Future<void> _startNewRound() async {
+    setState(() => _resetting = true);
+    try {
+      await controller.resetRoom();
+      // Navigation happens in _onChange once the room_reset event arrives.
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _resetting = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Could not start new round: $e')));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,23 +98,54 @@ class ResultsScreen extends StatelessWidget {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context)
-                        .popUntil((route) => route.isFirst),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE94560),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
+                child: Column(
+                  children: [
+                    if (controller.isHost) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: _resetting ? null : _startNewRound,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF4ECDC4),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: _resetting
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('START NEW ROUND',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 2)),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.of(context)
+                            .popUntil((route) => route.isFirst),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFE94560),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text('BACK TO HOME',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 2)),
+                      ),
                     ),
-                    child: const Text('BACK TO HOME',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 2)),
-                  ),
+                  ],
                 ),
               ),
             ],

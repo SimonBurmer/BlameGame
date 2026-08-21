@@ -83,6 +83,21 @@ void main() {
     expect(room.players.map((p) => p.name), ['Emma', 'Jake']);
   });
 
+  test('resetRoom posts host_id to /rooms/{code}/reset', () async {
+    late http.Request captured;
+    final mock = MockClient((req) async {
+      captured = req;
+      return http.Response(jsonEncode({'code': 'ABC12', 'state': 'lobby'}), 200);
+    });
+    final api = ApiClient(httpClient: mock, baseUrl: 'http://test');
+
+    await api.resetRoom('ABC12', hostId: 'p1');
+
+    expect(captured.method, 'POST');
+    expect(captured.url.toString(), 'http://test/rooms/ABC12/reset');
+    expect(jsonDecode(captured.body)['host_id'], 'p1');
+  });
+
   test('non-2xx response throws ApiException', () async {
     final mock = MockClient((req) async => http.Response('name taken', 400));
     final api = ApiClient(httpClient: mock, baseUrl: 'http://test');

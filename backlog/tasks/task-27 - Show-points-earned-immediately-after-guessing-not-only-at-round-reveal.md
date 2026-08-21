@@ -1,9 +1,10 @@
 ---
 id: TASK-27
 title: 'Show points earned immediately after guessing, not only at round reveal'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 23:18'
+updated_date: '2026-08-21 23:27'
 labels:
   - frontend
   - backend
@@ -23,7 +24,7 @@ After tapping a guess, the player gets no feedback until the round timer runs ou
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Immediately after submitting a guess, the player sees their own result (correct/incorrect and points earned) without waiting for the round to end
-- [ ] #2 The existing end-of-round reveal banner (showing the true photo owner to everyone) is unaffected and still appears when the round resolves
-- [ ] #3 Guess submission (POST /rooms/{code}/guess) already returns enough info to know correctness and points -- reuse that response instead of adding a new endpoint
+- [x] #1 Immediately after submitting a guess, the player sees their own result (correct/incorrect and points earned) without waiting for the round to end
+- [x] #2 The existing end-of-round reveal banner (showing the true photo owner to everyone) is unaffected and still appears when the round resolves
+- [x] #3 Guess submission (POST /rooms/{code}/guess) already returns enough info to know correctness and points -- reuse that response instead of adding a new endpoint
 <!-- AC:END -->

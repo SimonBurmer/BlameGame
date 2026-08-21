@@ -1,11 +1,11 @@
 ---
 id: TASK-25
 title: Replace CocoaPods with Swift Package Manager and fix parallel simulator launch
-status: In Progress
+status: Done
 assignee:
   - '@manuel'
 created_date: '2026-08-21 21:00'
-updated_date: '2026-08-21 21:00'
+updated_date: '2026-08-21 22:55'
 labels:
   - infra
   - ios
@@ -53,5 +53,5 @@ Verified: flutter clean + pub get + build ios --simulator succeeds with zero Coc
 
 Two fixes rode along in the same commit, both in scripts/run-local-multiplayer.sh: the `backlog` CLI missing from PATH now prints a skip message instead of "command not found", and "${PIDS[@]}" on an empty array is guarded, since that is an unbound-variable error under bash 3.2 + set -u and would have failed inside the cleanup trap and masked the real error.
 
-Status stays In Progress until the PR is merged; all acceptance criteria are met on the branch.
+PR #10 (feature/task-25-replace-cocoapods-with-spm) merged into main at e941061.
 <!-- SECTION:NOTES:END -->

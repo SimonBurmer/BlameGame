@@ -1,10 +1,10 @@
 ---
 id: TASK-2
 title: Server-authoritative round timer synced to clients
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-21 23:18'
 labels:
   - frontend
   - backend
@@ -23,8 +23,8 @@ The 10s countdown in game_screen.dart is display-only and hardcoded (duplicated 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Backend broadcasts round start time / duration so clients compute remaining time
-- [ ] #2 Client countdown reads the server value instead of the hardcoded 10s
-- [ ] #3 roundSeconds is defined in one place, not duplicated
-- [ ] #4 Timer expiry triggers a defined behavior (auto-submit no-guess / timeout), not a no-op
+- [x] #1 Backend broadcasts round start time / duration so clients compute remaining time
+- [x] #2 Client countdown reads the server value instead of the hardcoded 10s
+- [x] #3 roundSeconds is defined in one place, not duplicated
+- [x] #4 Timer expiry triggers a defined behavior (auto-submit no-guess / timeout), not a no-op
 <!-- AC:END -->

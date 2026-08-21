@@ -303,8 +303,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _guessButtons() {
-    // You guess who took the photo — everyone except yourself is a candidate.
-    final candidates = c.players.where((p) => p.id != c.myPlayerId).toList();
+    // You guess who took the photo — any player, including yourself, is a candidate.
+    final candidates = c.players;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Wrap(
@@ -320,9 +320,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               decoration: BoxDecoration(
-                color: player.color.withValues(
-                  alpha: isSelected ? 0.35 : (disabled ? 0.05 : 0.15),
-                ),
+                color: isSelected
+                    ? player.color
+                    : player.color.withValues(alpha: disabled ? 0.05 : 0.15),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: player.color.withValues(alpha: isSelected ? 1.0 : 0.3),
@@ -332,21 +332,29 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(player.avatar, color: player.color, size: 20),
+                  Icon(
+                    player.avatar,
+                    color: isSelected ? Colors.white : player.color,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     player.name,
                     style: TextStyle(
-                      color: Colors.white.withValues(
-                        alpha: isSelected ? 1.0 : 0.9,
-                      ),
+                      color: isSelected
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.9),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   if (isSelected) ...[
                     const SizedBox(width: 6),
-                    Icon(Icons.check_circle, color: player.color, size: 16),
+                    const Icon(
+                      Icons.check_circle,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                   ],
                 ],
               ),

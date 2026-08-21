@@ -25,6 +25,7 @@ __all__ = [
     "submit_guess",
     "advance_round",
     "rankings",
+    "reset_room",
 ]
 
 
@@ -126,3 +127,18 @@ def advance_round(room: Room) -> None:
 def rankings(room: Room) -> List[Player]:
     """Players sorted by score, highest first (ties keep join order)."""
     return sorted(room.players, key=lambda p: p.score, reverse=True)
+
+
+def reset_room(room: Room) -> None:
+    """Send a finished (or mid-lobby) room back to LOBBY for a new round.
+
+    Same room code, same players and photos, same host — only rounds are
+    cleared, so the group can play again without re-sharing the code or
+    re-uploading photos. Scores are NOT reset: players who stay in the room
+    keep a running total across every round played there.
+    """
+    if room.state == RoomState.IN_ROUND or room.state == RoomState.REVEALING:
+        raise GameError("cannot reset a room while a round is in progress")
+    room.rounds = []
+    room.current_round = 0
+    room.state = RoomState.LOBBY

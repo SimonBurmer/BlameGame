@@ -30,6 +30,7 @@ from app.game import (
     advance_round,
     current_photo,
     rankings,
+    reset_room,
     start_game,
     submit_guess,
 )
@@ -68,6 +69,10 @@ class GuessBody(BaseModel):
     guesser_id: str
     guessed_owner_id: str
     seconds_left: int
+
+
+class ResetBody(BaseModel):
+    host_id: str
 
 
 # --- serialization helpers ----------------------------------------------
@@ -222,6 +227,23 @@ async def advance(code: str) -> dict:
         )
     else:
         await _broadcast_round_started(room)
+    return _room_dict(room)
+
+
+@app.post("/rooms/{code}/reset")
+async def reset(code: str, body: ResetBody) -> dict:
+    room = _get_room(code)
+    host = room.player_by_id(body.host_id)
+    if host is None or not host.is_host:
+        raise HTTPException(status_code=403, detail="only the host can reset the room")
+    try:
+        reset_room(room)
+    except GameError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await manager.broadcast(
+        room.code,
+        {"type": "room_reset", "players": [_player_dict(p) for p in room.players]},
+    )
     return _room_dict(room)
 
 

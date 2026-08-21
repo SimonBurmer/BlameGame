@@ -61,6 +61,20 @@ void main() {
     expect(f.rankings.first.score, 800);
   });
 
+  test('decodes room_reset with reset players', () {
+    final e = GameEvent.fromJson({
+      'type': 'room_reset',
+      'players': [
+        {'id': 'p1', 'name': 'Emma', 'score': 0, 'is_host': true},
+        {'id': 'p2', 'name': 'Jake', 'score': 0, 'is_host': false},
+      ],
+    });
+    expect(e, isA<RoomReset>());
+    final r = e as RoomReset;
+    expect(r.players.map((p) => p.name), ['Emma', 'Jake']);
+    expect(r.players.every((p) => p.score == 0), true);
+  });
+
   test('unknown event type falls back to UnknownEvent', () {
     final e = GameEvent.fromJson({'type': 'something_new'});
     expect(e, isA<UnknownEvent>());

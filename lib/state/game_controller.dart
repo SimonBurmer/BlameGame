@@ -101,6 +101,17 @@ class GameController extends ChangeNotifier {
       case GameFinished(:final rankings):
         finalRankings = rankings;
         phase = GamePhase.finished;
+      case RoomReset(:final players):
+        this.players
+          ..clear()
+          ..addAll(players);
+        roundIndex = 0;
+        currentPhoto = null;
+        revealedOwnerId = null;
+        hasGuessedThisRound = false;
+        lastPointsEarned = null;
+        finalRankings = [];
+        phase = GamePhase.lobby;
       case UnknownEvent():
         break;
     }
@@ -140,6 +151,11 @@ class GameController extends ChangeNotifier {
       totalRounds: totalRounds,
       roundSeconds: roundSeconds,
     );
+  }
+
+  /// Host resets the room back to the lobby so the same group can play again.
+  Future<void> resetRoom() async {
+    await api.resetRoom(roomCode!, hostId: myPlayerId!);
   }
 
   /// Submit a guess for the current round.

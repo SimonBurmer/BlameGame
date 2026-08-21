@@ -18,6 +18,7 @@ from app.game import (
     advance_round,
     rankings,
     current_photo,
+    reset_room,
 )
 
 
@@ -169,3 +170,78 @@ def test_rankings_sorted_by_score_desc():
     ranked = rankings(room)
     assert [p.name for p in ranked] == ["Jake", "Emma"]
     assert ranked[0].score == 800
+
+
+# --- resetting -------------------------------------------------------------
+
+def test_reset_returns_finished_room_to_lobby():
+    room, emma, jake = started_room()
+    advance_round(room)  # total_rounds=1 -> FINISHED
+    assert room.state == RoomState.FINISHED
+
+    reset_room(room)
+
+    assert room.state == RoomState.LOBBY
+    assert room.rounds == []
+    assert room.current_round == 0
+
+
+def test_reset_keeps_players_and_code():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    advance_round(room)
+
+    reset_room(room)
+
+    assert room.code == "TEST1"
+    assert [p.name for p in room.players] == ["Emma", "Jake"]
+
+
+def test_reset_carries_scores_over_to_the_next_round():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    advance_round(room)
+
+    reset_room(room)
+
+    assert room.player_by_id(jake.id).score == 800
+
+
+def test_reset_keeps_photos_for_the_next_round():
+    room, emma, jake = started_room()
+    advance_round(room)
+
+    reset_room(room)
+
+    assert len(room.photos) == 1
+
+
+def test_reset_keeps_host():
+    room, emma, jake = started_room()
+    advance_round(room)
+
+    reset_room(room)
+
+    assert emma.is_host is True
+    assert jake.is_host is False
+
+
+def test_reset_mid_lobby_room_is_a_noop_state_change():
+    room = make_room()
+    add_player(room, "Emma")
+    reset_room(room)
+    assert room.state == RoomState.LOBBY
+
+
+def test_cannot_reset_while_round_in_progress():
+    room, emma, jake = started_room()
+    assert room.state == RoomState.IN_ROUND
+    with pytest.raises(GameError):
+        reset_room(room)
+
+
+def test_cannot_reset_while_revealing():
+    room, emma, jake = started_room()
+    room.state = RoomState.REVEALING
+    with pytest.raises(GameError):
+        reset_room(room)

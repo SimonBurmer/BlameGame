@@ -128,5 +128,15 @@ class ApiClient {
     return (_decode(resp)['points'] as num).toInt();
   }
 
+  /// Host resets the room back to the lobby for a new round.
+  Future<void> resetRoom(String code, {required String hostId}) async {
+    final resp = await _http.post(
+      _uri('/rooms/$code/reset'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'host_id': hostId}),
+    );
+    _decode(resp);
+  }
+
   void close() => _http.close();
 }

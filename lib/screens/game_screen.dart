@@ -132,6 +132,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               Expanded(child: _photoArea()),
               const SizedBox(height: 16),
               if (c.phase == GamePhase.revealed) _resultBanner(),
+              if (c.phase == GamePhase.inRound && c.hasGuessedThisRound)
+                _instantResultBanner(),
               if (c.phase == GamePhase.inRound) _guessButtons(),
               const SizedBox(height: 16),
             ],
@@ -256,6 +258,44 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       child: CircularProgressIndicator(color: Colors.white),
                     ),
             ),
+    );
+  }
+
+  /// Shown right after the local player guesses, before the round reveals
+  /// the true owner to everyone. Only reports the player's own result --
+  /// no owner name, since that isn't known until the reveal.
+  Widget _instantResultBanner() {
+    final points = c.lastPointsEarned;
+    if (points == null) return const SizedBox.shrink();
+    final correct = points > 0;
+    final color = correct ? Colors.greenAccent : const Color(0xFFE94560);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            correct ? Icons.check_circle : Icons.cancel,
+            color: color,
+            size: 28,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            correct ? 'Correct! +$points points' : 'Guess submitted',
+            style: TextStyle(
+              color: color,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

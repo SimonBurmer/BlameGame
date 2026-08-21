@@ -6,8 +6,8 @@
 # Usage:
 #   scripts/run-local-multiplayer.sh
 #
-# Requires: Xcode simulators, Flutter, CocoaPods (see README "First-time
-# setup"), a backend/.venv with deps installed, and the `backlog` CLI.
+# Requires: Xcode simulators, Flutter, a backend/.venv with deps installed, and
+# (optionally) the `backlog` CLI.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -21,7 +21,7 @@ PIDS=()
 cleanup() {
   echo
   echo "Shutting down..."
-  for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for pid in ${PIDS[@]+"${PIDS[@]}"}; do kill "$pid" 2>/dev/null || true; done
 }
 trap cleanup INT TERM EXIT
 
@@ -41,11 +41,15 @@ else
 fi
 
 # --- backlog board -------------------------------------------------------
-echo "Starting Backlog.md board on port $BACKLOG_PORT..."
-backlog browser --port "$BACKLOG_PORT" --no-open &
-PIDS+=("$!")
-sleep 1
-open "http://127.0.0.1:$BACKLOG_PORT" || true
+if command -v backlog > /dev/null 2>&1; then
+  echo "Starting Backlog.md board on port $BACKLOG_PORT..."
+  backlog browser --port "$BACKLOG_PORT" --no-open &
+  PIDS+=("$!")
+  sleep 1
+  open "http://127.0.0.1:$BACKLOG_PORT" || true
+else
+  echo "Skipping Backlog.md board: 'backlog' CLI not on PATH (npm i -g backlog.md)."
+fi
 
 # --- simulators ----------------------------------------------------------
 boot_by_name() {
@@ -70,10 +74,18 @@ echo
 
 open -a Simulator
 
-flutter run -d "$UDID_A" --dart-define=API_BASE="$API_BASE" &
+# Build once up front and reuse the binary on both simulators. Two concurrent
+# `flutter run`s share build/ios and race while copying Flutter.framework, which
+# fails one of them with rsync/"move_file: ... No such file or directory".
+APP_PATH="build/ios/iphonesimulator/Runner.app"
+echo "Building the iOS simulator app once (shared by both simulators)..."
+flutter build ios --simulator --debug --dart-define=API_BASE="$API_BASE"
+
+# API_BASE is compiled into the binary above, so --use-application-binary runs
+# take no --dart-define (it would be ignored: these skip the build step).
+flutter run -d "$UDID_A" --use-application-binary="$APP_PATH" &
 PIDS+=("$!")
-sleep 3
-flutter run -d "$UDID_B" --dart-define=API_BASE="$API_BASE" &
+flutter run -d "$UDID_B" --use-application-binary="$APP_PATH" &
 PIDS+=("$!")
 
 wait

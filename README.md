@@ -8,15 +8,8 @@ Photo Roulette 2 is being built with Flutter.
 
 ### First-time setup
 
-The app uses native plugins (e.g. `photo_manager`), so on iOS/macOS you need
-**CocoaPods** installed once. Without it the iOS build fails with
-"CocoaPods not installed" and the old build stays on the simulator.
-
-```sh
-brew install cocoapods
-```
-
-Then fetch Dart dependencies:
+Native plugins (e.g. `photo_manager`) are linked with **Swift Package Manager**,
+which ships with Xcode — CocoaPods is not needed. Just fetch Dart dependencies:
 
 ```sh
 flutter pub get

@@ -22,8 +22,8 @@ Two related UI/UX gaps in the guess screen: (1) the local player is always exclu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Player list includes the local player as a guessable option
-- [ ] #2 Guessing yourself is submitted and scored the same way as any other guess (correct if it is genuinely your own photo)
-- [ ] #3 The selected player's chip is visually distinct with a clearer color treatment than the current subtle opacity/border change (e.g. filled background in the player's color, not just a thin border)
-- [ ] #4 Non-selected chips remain visually de-emphasized as they are today
+- [x] #1 Player list includes the local player as a guessable option
+- [x] #2 Guessing yourself is submitted and scored the same way as any other guess (correct if it is genuinely your own photo)
+- [x] #3 The selected player's chip is visually distinct with a clearer color treatment than the current subtle opacity/border change (e.g. filled background in the player's color, not just a thin border)
+- [x] #4 Non-selected chips remain visually de-emphasized as they are today
 <!-- AC:END -->

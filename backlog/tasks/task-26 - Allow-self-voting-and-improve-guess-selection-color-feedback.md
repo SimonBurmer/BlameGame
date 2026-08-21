@@ -1,9 +1,10 @@
 ---
 id: TASK-26
 title: Allow self-voting and improve guess-selection color feedback
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 23:17'
+updated_date: '2026-08-21 23:25'
 labels:
   - frontend
   - gameplay

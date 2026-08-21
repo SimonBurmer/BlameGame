@@ -78,6 +78,7 @@ sealed class GameEvent {
         return RoundStarted(
           roundIndex: (json['round_index'] as num).toInt(),
           photo: PhotoInfo.fromJson(json['photo'] as Map<String, dynamic>),
+          roundEndsAt: (json['round_ends_at'] as num).toInt(),
         );
       case 'round_revealed':
         return RoundRevealed(
@@ -116,7 +117,14 @@ class PlayerJoined extends GameEvent {
 class RoundStarted extends GameEvent {
   final int roundIndex;
   final PhotoInfo photo;
-  const RoundStarted({required this.roundIndex, required this.photo});
+  /// Server epoch-ms deadline for this round; clients derive remaining time
+  /// as `roundEndsAt - now()` instead of running their own local clock.
+  final int roundEndsAt;
+  const RoundStarted({
+    required this.roundIndex,
+    required this.photo,
+    required this.roundEndsAt,
+  });
 }
 
 class RoundRevealed extends GameEvent {

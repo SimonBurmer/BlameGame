@@ -24,13 +24,13 @@ async def _noop_sleep(_seconds: float) -> None:
     return None
 
 
-def make_started_room(total_rounds: int) -> Room:
+def make_started_room(total_rounds: int, round_seconds: int = 0) -> Room:
     room = Room(code="TIMER")
     emma = add_player(room, "Emma")
     jake = add_player(room, "Jake")
     add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
     add_photo(room, owner_id=jake.id, url="/uploads/jake.jpg")
-    start_game(room, total_rounds=total_rounds)
+    start_game(room, total_rounds=total_rounds, round_seconds=round_seconds)
     return room
 
 
@@ -41,7 +41,6 @@ async def test_driver_emits_round_and_finish_events_in_order():
 
     driver = RoundDriver(
         room,
-        round_seconds=0,
         sleep=_noop_sleep,
         on_event=lambda evt: events.append(evt["type"]),
     )
@@ -60,7 +59,7 @@ async def test_driver_emits_round_and_finish_events_in_order():
 @pytest.mark.anyio
 async def test_driver_finishes_the_room_state():
     room = make_started_room(total_rounds=1)
-    driver = RoundDriver(room, round_seconds=0, sleep=_noop_sleep, on_event=lambda e: None)
+    driver = RoundDriver(room, sleep=_noop_sleep, on_event=lambda e: None)
     await driver.run()
     assert room.state.value == "finished"
 
@@ -71,7 +70,6 @@ async def test_round_started_event_carries_photo_and_index():
     starts = []
     driver = RoundDriver(
         room,
-        round_seconds=0,
         sleep=_noop_sleep,
         on_event=lambda e: starts.append(e) if e["type"] == "round_started" else None,
     )
@@ -87,9 +85,22 @@ async def test_reveal_event_includes_correct_owner():
     reveals = []
     driver = RoundDriver(
         room,
-        round_seconds=0,
         sleep=_noop_sleep,
         on_event=lambda e: reveals.append(e) if e["type"] == "round_revealed" else None,
     )
     await driver.run()
     assert "owner_id" in reveals[0]
+
+
+@pytest.mark.anyio
+async def test_round_started_event_carries_server_authoritative_deadline():
+    room = make_started_room(total_rounds=1, round_seconds=10)
+    starts = []
+    driver = RoundDriver(
+        room,
+        sleep=_noop_sleep,
+        time_fn=lambda: 1000.0,
+        on_event=lambda e: starts.append(e) if e["type"] == "round_started" else None,
+    )
+    await driver.run()
+    assert starts[0]["round_ends_at"] == int((1000.0 + 10) * 1000)

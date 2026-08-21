@@ -87,6 +87,15 @@ def test_start_builds_rounds_and_enters_in_round():
     assert room.current_round == 0
 
 
+def test_start_stores_round_seconds_on_the_room():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    add_player(room, "Jake")
+    add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    start_game(room, total_rounds=1, round_seconds=15)
+    assert room.round_seconds == 15
+
+
 def test_cannot_start_twice():
     room = make_room()
     emma = add_player(room, "Emma")

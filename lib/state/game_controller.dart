@@ -34,6 +34,9 @@ class GameController extends ChangeNotifier {
   String? revealedOwnerId;
   bool hasGuessedThisRound = false;
   int? lastPointsEarned;
+  int roundSeconds = 10;
+  /// Server epoch-ms deadline for the current round, or null between rounds.
+  int? roundEndsAt;
 
   // Results
   List<GamePlayer> finalRankings = [];
@@ -68,6 +71,7 @@ class GameController extends ChangeNotifier {
     players
       ..clear()
       ..addAll(snapshot.players);
+    roundSeconds = snapshot.roundSeconds;
 
     _connectSocket();
     notifyListeners();
@@ -84,15 +88,17 @@ class GameController extends ChangeNotifier {
         if (!players.any((p) => p.id == player.id)) {
           players.add(player);
         }
-      case RoundStarted(:final roundIndex, :final photo):
+      case RoundStarted(:final roundIndex, :final photo, :final roundEndsAt):
         this.roundIndex = roundIndex;
         currentPhoto = photo;
+        this.roundEndsAt = roundEndsAt;
         revealedOwnerId = null;
         hasGuessedThisRound = false;
         lastPointsEarned = null;
         phase = GamePhase.inRound;
       case RoundRevealed(:final ownerId):
         revealedOwnerId = ownerId;
+        roundEndsAt = null;
         phase = GamePhase.revealed;
       case GuessResult(:final guesserId, :final points):
         if (guesserId == myPlayerId) {
@@ -107,6 +113,7 @@ class GameController extends ChangeNotifier {
           ..addAll(players);
         roundIndex = 0;
         currentPhoto = null;
+        roundEndsAt = null;
         revealedOwnerId = null;
         hasGuessedThisRound = false;
         lastPointsEarned = null;
@@ -151,6 +158,7 @@ class GameController extends ChangeNotifier {
       totalRounds: totalRounds,
       roundSeconds: roundSeconds,
     );
+    this.roundSeconds = roundSeconds;
   }
 
   /// Host resets the room back to the lobby so the same group can play again.

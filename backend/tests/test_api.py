@@ -106,6 +106,7 @@ def test_get_room_snapshot(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "lobby"
+    assert body["round_seconds"] == 10  # Room default before a game starts.
     assert {p["name"] for p in body["players"]} == {"Emma", "Jake"}
 
 
@@ -139,14 +140,15 @@ def test_start_game_drives_full_round_sequence(client):
         assert resp.status_code == 200
 
         # The backend-driven timer broadcasts the whole game flow.
-        types = [ws.receive_json()["type"] for _ in range(5)]
-        assert types == [
+        events = [ws.receive_json() for _ in range(5)]
+        assert [e["type"] for e in events] == [
             "round_started",
             "round_revealed",
             "round_started",
             "round_revealed",
             "game_finished",
         ]
+        assert isinstance(events[0]["round_ends_at"], int)
 
 
 def test_only_host_can_start(client):

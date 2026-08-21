@@ -52,6 +52,7 @@ class Room:
     rounds: List[Round] = field(default_factory=list)
     current_round: int = 0
     state: RoomState = RoomState.LOBBY
+    round_seconds: int = 10
 
     def player_by_id(self, player_id: str) -> Optional[Player]:
         for p in self.players:

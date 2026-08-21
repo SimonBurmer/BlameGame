@@ -81,13 +81,19 @@ class ApiClient {
   }
 
   /// Fetch the current room snapshot (players, state, rounds).
-  Future<({String state, List<GamePlayer> players})> getRoom(String code) async {
+  Future<({String state, List<GamePlayer> players, int roundSeconds})> getRoom(
+    String code,
+  ) async {
     final resp = await _http.get(_uri('/rooms/$code'));
     final body = _decode(resp);
     final players = (body['players'] as List<dynamic>)
         .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
         .toList();
-    return (state: body['state'] as String, players: players);
+    return (
+      state: body['state'] as String,
+      players: players,
+      roundSeconds: (body['round_seconds'] as num).toInt(),
+    );
   }
 
   /// Host starts the game.

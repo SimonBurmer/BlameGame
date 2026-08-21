@@ -15,16 +15,18 @@ void main() {
     expect(e.player.isHost, true);
   });
 
-  test('decodes round_started with photo', () {
+  test('decodes round_started with photo and server deadline', () {
     final e = GameEvent.fromJson({
       'type': 'round_started',
       'round_index': 2,
       'photo': {'id': 'ph1', 'owner_id': 'p1', 'url': '/rooms/AB/photos/x.jpg'},
+      'round_ends_at': 1700000010000,
     });
     expect(e, isA<RoundStarted>());
     final r = e as RoundStarted;
     expect(r.roundIndex, 2);
     expect(r.photo.ownerId, 'p1');
+    expect(r.roundEndsAt, 1700000010000);
   });
 
   test('decodes round_revealed', () {

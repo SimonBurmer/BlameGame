@@ -61,7 +61,7 @@ def add_photo(room: Room, *, owner_id: str, url: str) -> Photo:
     return photo
 
 
-def start_game(room: Room, *, total_rounds: int = 5) -> None:
+def start_game(room: Room, *, total_rounds: int = 5, round_seconds: int = 10) -> None:
     """Begin the game: validate, build the rounds, enter the first round."""
     if room.state != RoomState.LOBBY:
         raise GameError("game has already started")
@@ -77,6 +77,7 @@ def start_game(room: Room, *, total_rounds: int = 5) -> None:
         Round(index=i, photo=pool[i % len(pool)]) for i in range(total_rounds)
     ]
     room.current_round = 0
+    room.round_seconds = round_seconds
     room.state = RoomState.IN_ROUND
 
 

@@ -16,11 +16,10 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
-  static const int roundSeconds = 10;
-
   GameController get c => widget.controller;
 
-  int _timeLeft = roundSeconds;
+  int _timeLeft = 0;
+  bool _timeExpired = false;
   Timer? _displayTimer;
   int _shownRound = -1;
   bool _navigated = false;
@@ -81,21 +80,33 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   void _syncToRound() {
     _shownRound = c.roundIndex;
-    _timeLeft = roundSeconds;
+    _timeExpired = false;
     _displayTimer?.cancel();
-    _displayTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_timeLeft <= 1) {
-        t.cancel();
-        setState(() => _timeLeft = 0);
-      } else {
-        setState(() => _timeLeft--);
-      }
-    });
+    _computeTimeLeft();
+    _displayTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => setState(_computeTimeLeft),
+    );
     setState(() {});
   }
 
+  /// Derives remaining time from the server's round_ends_at deadline instead
+  /// of decrementing a local counter, so a late-arriving round_started event
+  /// or a missed tick still lands on the correct remaining time.
+  void _computeTimeLeft() {
+    final endsAt = c.roundEndsAt;
+    final remainingMs = endsAt == null
+        ? 0
+        : endsAt - DateTime.now().millisecondsSinceEpoch;
+    _timeLeft = (remainingMs / 1000).ceil().clamp(0, c.roundSeconds);
+    if (_timeLeft <= 0) {
+      _timeExpired = true;
+      _displayTimer?.cancel();
+    }
+  }
+
   void _guess(GamePlayer player) {
-    if (c.hasGuessedThisRound || c.phase != GamePhase.inRound) return;
+    if (c.hasGuessedThisRound || _timeExpired || c.phase != GamePhase.inRound) return;
     _myGuessedPlayerId = player.id;
     c.guess(player.id, _timeLeft);
   }
@@ -179,7 +190,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _timerBar() {
-    final progress = _timeLeft / roundSeconds;
+    final progress = c.roundSeconds == 0 ? 0.0 : _timeLeft / c.roundSeconds;
     final color = _timeLeft <= 3
         ? const Color(0xFFE94560)
         : const Color(0xFF4ECDC4);
@@ -312,8 +323,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         runSpacing: 10,
         alignment: WrapAlignment.center,
         children: candidates.map((player) {
-          final disabled = c.hasGuessedThisRound;
-          final isSelected = disabled && player.id == _myGuessedPlayerId;
+          final disabled = c.hasGuessedThisRound || _timeExpired;
+          final isSelected =
+              c.hasGuessedThisRound && player.id == _myGuessedPlayerId;
           return GestureDetector(
             onTap: disabled ? null : () => _guess(player),
             child: AnimatedContainer(

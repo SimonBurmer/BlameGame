@@ -5,13 +5,15 @@ The RoundDriver owns the *timing* of a game: it announces each round, waits
 emitting an event dict at each transition. The API layer turns those events
 into WebSocket broadcasts.
 
-`sleep` is injected so tests can pass a no-op and run instantly (no real
-waiting). In production it's `asyncio.sleep`.
+`sleep` and `time_fn` are injected so tests can pass a no-op sleep and a
+fixed clock and run instantly and deterministically. In production they're
+`asyncio.sleep` and `time.time`.
 """
 
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Awaitable, Callable, Dict
 
 from app.game import advance_round, current_photo
@@ -19,6 +21,7 @@ from app.models import Room, RoomState
 
 EventCallback = Callable[[Dict], None]
 SleepFn = Callable[[float], Awaitable[None]]
+TimeFn = Callable[[], float]
 
 
 class RoundDriver:
@@ -26,13 +29,13 @@ class RoundDriver:
         self,
         room: Room,
         *,
-        round_seconds: float = 10,
         sleep: SleepFn = asyncio.sleep,
+        time_fn: TimeFn = time.time,
         on_event: EventCallback,
     ) -> None:
         self.room = room
-        self.round_seconds = round_seconds
         self._sleep = sleep
+        self._time_fn = time_fn
         self._on_event = on_event
 
     def _photo_dict(self) -> Dict:
@@ -43,16 +46,19 @@ class RoundDriver:
         """Drive the game from its first round to completion."""
         while self.room.state == RoomState.IN_ROUND:
             round_index = self.room.current_round
+            round_seconds = self.room.round_seconds
+            round_ends_at = int((self._time_fn() + round_seconds) * 1000)
 
             self._on_event(
                 {
                     "type": "round_started",
                     "round_index": round_index,
                     "photo": self._photo_dict(),
+                    "round_ends_at": round_ends_at,
                 }
             )
 
-            await self._sleep(self.round_seconds)
+            await self._sleep(round_seconds)
 
             owner_id = current_photo(self.room).owner_id
             self._on_event(

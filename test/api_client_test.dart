@@ -62,11 +62,12 @@ void main() {
     expect(points, 800);
   });
 
-  test('getRoom parses state and players', () async {
+  test('getRoom parses state, players, and round_seconds', () async {
     final mock = MockClient((req) async {
       return http.Response(
         jsonEncode({
           'state': 'lobby',
+          'round_seconds': 15,
           'players': [
             {'id': 'p1', 'name': 'Emma', 'score': 0, 'is_host': true},
             {'id': 'p2', 'name': 'Jake', 'score': 0, 'is_host': false},
@@ -80,6 +81,7 @@ void main() {
     final room = await api.getRoom('ABC12');
 
     expect(room.state, 'lobby');
+    expect(room.roundSeconds, 15);
     expect(room.players.map((p) => p.name), ['Emma', 'Jake']);
   });
 

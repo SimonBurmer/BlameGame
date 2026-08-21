@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -91,6 +92,7 @@ def _room_dict(room: Room) -> dict:
         "state": room.state.value,
         "current_round": room.current_round,
         "total_rounds": len(room.rounds),
+        "round_seconds": room.round_seconds,
         "players": [_player_dict(p) for p in room.players],
     }
 
@@ -168,7 +170,7 @@ async def start(code: str, body: StartBody) -> dict:
     if host is None or not host.is_host:
         raise HTTPException(status_code=403, detail="only the host can start")
     try:
-        start_game(room, total_rounds=body.total_rounds)
+        start_game(room, total_rounds=body.total_rounds, round_seconds=body.round_seconds)
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -180,7 +182,7 @@ async def start(code: str, body: StartBody) -> dict:
     def emit(event: dict) -> None:
         loop.create_task(manager.broadcast(room.code, event))
 
-    driver = RoundDriver(room, round_seconds=body.round_seconds, on_event=emit)
+    driver = RoundDriver(room, on_event=emit)
     asyncio.create_task(driver.run())
 
     return _room_dict(room)
@@ -248,12 +250,14 @@ async def reset(code: str, body: ResetBody) -> dict:
 
 
 async def _broadcast_round_started(room: Room) -> None:
+    round_ends_at = int((time.time() + room.round_seconds) * 1000)
     await manager.broadcast(
         room.code,
         {
             "type": "round_started",
             "round_index": room.current_round,
             "photo": _photo_dict(current_photo(room)),
+            "round_ends_at": round_ends_at,
         },
     )
 

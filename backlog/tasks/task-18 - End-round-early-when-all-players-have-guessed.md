@@ -1,10 +1,10 @@
 ---
 id: TASK-18
 title: End round early when all players have guessed
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-21 23:47'
 labels:
   - backend
   - gameplay
@@ -23,6 +23,6 @@ Rounds always run the full timer even if everyone has already guessed. Add early
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A round ends early once every active player has guessed
-- [ ] #2 Early end is broadcast and clients advance immediately
+- [x] #1 A round ends early once every active player has guessed
+- [x] #2 Early end is broadcast and clients advance immediately
 <!-- AC:END -->

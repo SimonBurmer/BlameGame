@@ -7,7 +7,14 @@ state machine advances correctly.
 
 Run async tests via anyio's pytest plugin (installed with FastAPI). The
 `anyio_backend` fixture pins it to asyncio.
+
+The early-end tests below use the *real* asyncio.sleep (not the no-op) since
+they need genuine wall-clock separation to prove the driver returns before
+its timeout — each is wrapped in asyncio.wait_for with a short bound so a
+regression fails fast instead of hanging the suite.
 """
+
+import asyncio
 
 import pytest
 
@@ -104,3 +111,32 @@ async def test_round_started_event_carries_server_authoritative_deadline():
     )
     await driver.run()
     assert starts[0]["round_ends_at"] == int((1000.0 + 10) * 1000)
+
+
+# --- early end -------------------------------------------------------------
+
+@pytest.mark.anyio
+async def test_signal_early_end_returns_before_the_timeout():
+    room = make_started_room(total_rounds=1, round_seconds=30)
+    events = []
+    driver = RoundDriver(room, on_event=lambda e: events.append(e["type"]))
+
+    async def guess_soon():
+        await asyncio.sleep(0.05)
+        driver.signal_early_end(room.current_round)
+
+    asyncio.ensure_future(guess_soon())
+    await asyncio.wait_for(driver.run(), timeout=2)
+
+    assert events == ["round_started", "round_revealed", "game_finished"]
+
+
+@pytest.mark.anyio
+async def test_signal_early_end_with_stale_round_index_is_a_noop():
+    room = make_started_room(total_rounds=1, round_seconds=0)
+    driver = RoundDriver(room, on_event=lambda e: None)
+    # Signal for a round that isn't (yet) current -- ignored, the round still
+    # ends via the normal (instant, since round_seconds=0) timeout path.
+    driver.signal_early_end(round_index=99)
+    await asyncio.wait_for(driver.run(), timeout=2)
+    assert room.state.value == "finished"

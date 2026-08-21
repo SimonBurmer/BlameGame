@@ -166,22 +166,36 @@ def test_only_host_can_start(client):
 def test_host_can_reset_finished_room(client):
     code = client.post("/rooms").json()["code"]
     host_id = _join(client, code, "Emma")
-    _join(client, code, "Jake")
+    jake_id = _join(client, code, "Jake")
     _upload_photo(client, code, host_id)
+    # A long round window so the guess below lands before the driver
+    # auto-advances (round_seconds=0 would finish the round instantly).
     client.post(
         f"/rooms/{code}/start",
-        json={"host_id": host_id, "total_rounds": 1, "round_seconds": 0},
+        json={"host_id": host_id, "total_rounds": 1, "round_seconds": 30},
     )
+    # Jake correctly guesses Emma's photo -> scores a running total.
+    guess_resp = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": jake_id, "guessed_owner_id": host_id, "seconds_left": 8},
+    )
+    assert guess_resp.status_code == 200
+    assert guess_resp.json()["points"] == 800
+
+    # Finish the round manually rather than waiting out the timer.
+    advance_resp = client.post(f"/rooms/{code}/advance")
+    assert advance_resp.json()["state"] == "finished"
 
     resp = client.post(f"/rooms/{code}/reset", json={"host_id": host_id})
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "lobby"
     assert body["total_rounds"] == 0
-    assert {p["score"] for p in body["players"]} == {0}
-    # Same room code, same players -- no rejoin needed.
+    # Same room code, same players, scores carried over -- no rejoin needed.
     assert body["code"] == code
     assert {p["name"] for p in body["players"]} == {"Emma", "Jake"}
+    jake = next(p for p in body["players"] if p["id"] == jake_id)
+    assert jake["score"] == 800
 
 
 def test_only_host_can_reset(client):

@@ -186,7 +186,7 @@ def test_reset_returns_finished_room_to_lobby():
     assert room.current_round == 0
 
 
-def test_reset_clears_scores_but_keeps_players_and_code():
+def test_reset_keeps_players_and_code():
     room, emma, jake = started_room()
     submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
     advance_round(room)
@@ -195,7 +195,16 @@ def test_reset_clears_scores_but_keeps_players_and_code():
 
     assert room.code == "TEST1"
     assert [p.name for p in room.players] == ["Emma", "Jake"]
-    assert all(p.score == 0 for p in room.players)
+
+
+def test_reset_carries_scores_over_to_the_next_round():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    advance_round(room)
+
+    reset_room(room)
+
+    assert room.player_by_id(jake.id).score == 800
 
 
 def test_reset_keeps_photos_for_the_next_round():

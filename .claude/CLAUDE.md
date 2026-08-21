@@ -83,11 +83,18 @@ Don't simplify away input validation at trust boundaries, error handling, or sec
 
 ## Local iOS dev — known gotchas (learned the hard way)
 
-- **CocoaPods is required** the moment any native plugin is added (e.g. `photo_manager`).
-  Without it, `flutter run` fails at "CocoaPods not installed" — and because the failed
-  run doesn't replace what's on the simulator, you're left staring at whatever old build
-  happens to be installed, which looks like "nothing changed" rather than a clear error.
-  Install once: `brew install cocoapods` (no `sudo` needed via Homebrew).
+- **iOS plugins are linked with Swift Package Manager, not CocoaPods.** CocoaPods was
+  deintegrated once every plugin became a Swift Package; there is no `ios/Podfile` and
+  `brew install cocoapods` is not part of setup. Plugins are statically linked into
+  `Runner.debug.dylib` rather than embedded under `Runner.app/Frameworks/`, so check
+  there (`nm Runner.app/Runner.debug.dylib | grep -i <plugin>`) when verifying a plugin
+  is linked — the top-level `Runner` binary is just a thin launcher stub.
+- **Never run two `flutter run`s against this project concurrently.** They share
+  `build/ios` and race while copying `Flutter.framework`, failing one with
+  `rsync`/`move_file: Flutter.framework/Flutter: No such file or directory`. Build once
+  (`flutter build ios --simulator --debug`) and launch each device with
+  `--use-application-binary=build/ios/iphonesimulator/Runner.app`, as
+  `scripts/run-local-multiplayer.sh` does.
 - **A stale app on the simulator looks exactly like "my change didn't work."** Symptoms:
   buttons don't do anything, UI shows data/copy that doesn't exist anywhere in `lib/`,
   and the backend log shows zero incoming requests. Confirm which build is actually

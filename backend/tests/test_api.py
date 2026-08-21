@@ -163,6 +163,57 @@ def test_only_host_can_start(client):
     assert resp.status_code == 403
 
 
+# --- early round end -------------------------------------------------------
+#
+# The actual early-vs-timeout timing race is proven in test_timer.py, which
+# drives RoundDriver directly with real asyncio.sleep -- FastAPI's
+# TestClient doesn't keep a background asyncio.create_task's real-time delay
+# alive across separate synchronous request calls, so timing can't be
+# asserted through it. These tests instead confirm the request-level
+# contract: /guess doesn't error when it's the guess that completes the
+# round, whether or not a driver happens to be registered for the room.
+
+def test_guess_that_completes_the_round_does_not_error(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    # A real, non-zero window so the round is still IN_ROUND when the
+    # guesses below land (round_seconds=0 finishes the round immediately).
+    client.post(
+        f"/rooms/{code}/start",
+        json={"host_id": host_id, "total_rounds": 1, "round_seconds": 30},
+    )
+
+    r1 = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": host_id, "guessed_owner_id": host_id, "seconds_left": 25},
+    )
+    r2 = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": jake_id, "guessed_owner_id": host_id, "seconds_left": 25},
+    )
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+
+
+def test_partial_guess_does_not_error(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    client.post(
+        f"/rooms/{code}/start",
+        json={"host_id": host_id, "total_rounds": 1, "round_seconds": 30},
+    )
+
+    resp = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": jake_id, "guessed_owner_id": host_id, "seconds_left": 25},
+    )
+    assert resp.status_code == 200
+
+
 # --- resetting -------------------------------------------------------------
 
 def test_host_can_reset_finished_room(client):

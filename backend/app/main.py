@@ -42,6 +42,11 @@ from app.timer import RoundDriver
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# room code -> the RoundDriver currently timing that room's rounds, so
+# POST /guess can wake it early once everyone has guessed. Populated by
+# start(), removed once the driver's run() completes.
+_drivers: dict[str, RoundDriver] = {}
+
 app = FastAPI(title="PhotoRoulette API")
 
 # Open CORS: the Flutter app (incl. web/dev) will call from another origin.
@@ -183,7 +188,15 @@ async def start(code: str, body: StartBody) -> dict:
         loop.create_task(manager.broadcast(room.code, event))
 
     driver = RoundDriver(room, on_event=emit)
-    asyncio.create_task(driver.run())
+    _drivers[room.code] = driver
+
+    async def run_and_cleanup() -> None:
+        try:
+            await driver.run()
+        finally:
+            _drivers.pop(room.code, None)
+
+    asyncio.create_task(run_and_cleanup())
 
     return _room_dict(room)
 
@@ -209,6 +222,13 @@ async def guess(code: str, body: GuessBody) -> dict:
             "correct": points > 0,
         },
     )
+
+    this_round = room.rounds[room.current_round]
+    if len(this_round.guesses) >= len(room.players):
+        driver = _drivers.get(room.code)
+        if driver is not None:
+            driver.signal_early_end(room.current_round)
+
     return {"points": points, "correct": points > 0}
 
 

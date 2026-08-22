@@ -1,7 +1,7 @@
 ---
 id: TASK-45
 title: Close a kicked player's open WebSocket immediately
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-22 15:34'
 updated_date: '2026-08-22 18:07'
@@ -26,9 +26,9 @@ Closing it needs ConnectionManager (backend/app/connection.py) to map player_id 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Kicking a player closes their open socket server-side, not just on client cooperation
-- [ ] #2 A client that ignores player_left stops receiving the room feed
-- [ ] #3 ConnectionManager can address a single player's socket
-- [ ] #4 Kicking a player closes their open socket server-side, not just on client cooperation
-- [ ] #5 A client that ignores player_left stops receiving the room feed
+- [x] #1 Kicking a player closes their open socket server-side, not just on client cooperation
+- [x] #2 A client that ignores player_left stops receiving the room feed
+- [x] #3 ConnectionManager can address a single player's socket
+- [x] #4 Kicking a player closes their open socket server-side, not just on client cooperation
+- [x] #5 A client that ignores player_left stops receiving the room feed
 <!-- AC:END -->

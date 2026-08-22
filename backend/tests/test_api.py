@@ -11,8 +11,10 @@ autouse fixture below).
 import io
 
 import pytest
+from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
+from app.connection import manager
 from app.main import app
 from app.models import RoomState
 from app.store import store
@@ -76,6 +78,30 @@ def test_create_room_returns_code(client):
     assert resp.status_code == 200
     code = resp.json()["code"]
     assert len(code) == 5
+
+
+def test_create_room_defaults_to_normal_mode(client):
+    # No body at all still works, and is not hardcore.
+    assert client.post("/rooms").json()["hardcore"] is False
+    code = client.post("/rooms", json={}).json()["code"]
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is False
+
+
+def test_create_hardcore_room_reports_mode_in_snapshot(client):
+    # Every client learns the mode from the snapshot, not from local state.
+    code = client.post("/rooms", json={"hardcore": True}).json()["code"]
+    _join(client, code, "Emma")
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is True
+
+
+def test_hardcore_mode_is_not_mutable_after_creation(client):
+    # Starting the game must not be able to flip the mode: photos are already
+    # uploaded by then, so a late toggle would retroactively break the promise.
+    code = client.post("/rooms", json={"hardcore": False}).json()["code"]
+    host = _join(client, code, "Emma")
+    _join(client, code, "Liam")
+    client.post(f"/rooms/{code}/start", json={"host_id": host, "hardcore": True})
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is False
 
 
 def test_join_room(client):
@@ -471,6 +497,54 @@ def test_kicked_player_is_refused_a_new_socket(client):
             pass
 
 
+def test_kick_closes_the_kicked_players_open_socket(client):
+    """A client that ignores player_left must still stop receiving the feed.
+
+    Asserted server-side (the socket is deregistered and a later broadcast is
+    not delivered to it), not by a cooperating client hanging up.
+    """
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as host_ws:
+        with client.websocket_connect(f"/ws/{code}/{jake_id}") as jake_ws:
+            client.post(
+                f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id}
+            )
+
+            # Server-side: Jake holds no socket in this room any more.
+            assert manager._players.get((code, jake_id)) is None
+            assert len(manager._rooms.get(code, [])) == 1
+
+            host_ws.receive_json()  # player_left
+            # Jake's client ignores player_left and keeps reading. It gets the
+            # close frame, then nothing -- not the next room event.
+            jake_ws.receive_json()  # player_left, delivered before the close
+            with pytest.raises(WebSocketDisconnect):
+                jake_ws.receive_json()
+
+        client.post(f"/rooms/{code}/join", json={"name": "Zoe"})
+        # The post-kick event reaches the host and nobody else.
+        assert host_ws.receive_json()["type"] == "player_joined"
+
+
+def test_kick_closes_every_socket_a_player_holds(client):
+    """A reconnect race can leave a stale socket open; both must be closed."""
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{jake_id}"):
+        with client.websocket_connect(f"/ws/{code}/{jake_id}"):
+            assert len(manager._players[(code, jake_id)]) == 2
+            client.post(
+                f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id}
+            )
+            assert manager._players.get((code, jake_id)) is None
+            assert manager._rooms.get(code) is None
+
+
 def test_leaving_mid_game_does_not_leave_a_round_on_a_departed_player(client):
     code = client.post("/rooms").json()["code"]
     host_id = _join(client, code, "Emma")
@@ -523,6 +597,21 @@ def test_jpeg_round_trips_as_jpeg(client):
     url = _upload_photo(client, code, host_id).json()["url"]
     assert url.endswith(".jpg")
     assert client.get(url).headers["content-type"] == "image/jpeg"
+
+
+def test_heic_upload_is_rejected(client):
+    # iOS shoots HEIC by default, but the Flutter client cannot decode HEIC when
+    # the photo is served back, so the server must keep refusing it. The client
+    # transcodes to JPEG at sample time instead (see lib/services/photo_sampler
+    # .dart) — widening this allowlist would store photos nobody can display.
+    # Real HEIC magic: an ISO-BMFF box with an `ftypheic` major brand at byte 4.
+    heic = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00heicmif1"
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    resp = _upload_photo(client, code, host_id, content=heic)
+    assert resp.status_code == 400
+    assert "JPEG or PNG" in resp.json()["detail"]
 
 
 def test_photo_route_does_not_serve_files_outside_the_upload_dir(client):

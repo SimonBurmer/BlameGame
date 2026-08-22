@@ -68,6 +68,17 @@ class GameController extends ChangeNotifier {
   int? lastPointsEarned;
   int roundSeconds = 10;
 
+  /// Whether this room uploads photos blind, learned from the room snapshot.
+  ///
+  /// Null until the snapshot has landed: "mode unknown" is deliberately not
+  /// the same as "normal mode". A client that sampled before knowing could
+  /// upload blind in a room the player believed showed a preview, so screens
+  /// must gate sampling on [photoModeKnown] rather than on `hardcore == true`.
+  bool? hardcore;
+
+  /// True once the room's photo mode is known and it is safe to sample.
+  bool get photoModeKnown => hardcore != null;
+
   /// Server epoch-ms deadline for the current round, or null between rounds.
   int? roundEndsAt;
 
@@ -109,8 +120,10 @@ class GameController extends ChangeNotifier {
   }
 
   /// Create a room and join it as the host.
-  Future<void> createAndHost(String name) async {
-    final code = await api.createRoom();
+  ///
+  /// [hardcore] is fixed for the room's lifetime; it cannot be changed later.
+  Future<void> createAndHost(String name, {bool hardcore = false}) async {
+    final code = await api.createRoom(hardcore: hardcore);
     await _join(code, name);
   }
 
@@ -135,11 +148,15 @@ class GameController extends ChangeNotifier {
       final snapshot = await api.getRoom(code);
       _mergeRoster(snapshot.players);
       roundSeconds = snapshot.roundSeconds;
+      // The host reads the mode back off the snapshot too, rather than
+      // trusting what it asked for, so every client agrees on one source.
+      hardcore = snapshot.hardcore;
     } catch (_) {
       // Don't leave a half-joined controller behind.
       await _teardownSocket();
       _session = null;
       _players.clear();
+      hardcore = null;
       rethrow;
     }
     notifyListeners();
@@ -196,6 +213,7 @@ class GameController extends ChangeNotifier {
     final snapshot = await api.getRoom(session.roomCode);
     _mergeRoster(snapshot.players);
     roundSeconds = snapshot.roundSeconds;
+    hardcore = snapshot.hardcore;
     connectionError = null;
     notifyListeners();
   }

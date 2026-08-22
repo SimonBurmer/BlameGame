@@ -69,10 +69,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
     setState(() {});
   }
 
-  /// Samples random photos, shows them for confirmation, and only uploads what
-  /// the player accepts. Nothing leaves the device before they say so.
+  /// Samples random photos and uploads them.
+  ///
+  /// In normal mode they are shown for confirmation first and nothing leaves
+  /// the device before the player says so. In hardcore mode they are uploaded
+  /// blind — which is why nothing is sampled at all until the room's mode is
+  /// known, and why the lobby states the mode before this button is usable.
   Future<void> _addPhotos() async {
     if (_uploading) return;
+    final hardcore = c.hardcore;
+    if (hardcore == null) {
+      _snack('Still loading the game settings — try again in a moment');
+      return;
+    }
     setState(() => _uploading = true);
     try {
       final photos = await _sampler.sampleRandomPhotos(count: photoSampleCount);
@@ -81,13 +90,20 @@ class _LobbyScreenState extends State<LobbyScreen> {
         return;
       }
       if (!mounted) return;
-      final confirmed = await showModalBottomSheet<List<SampledPhoto>>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: const Color(0xFF16213E),
-        builder: (_) => _PhotoPreviewSheet(sampler: _sampler, initial: photos),
-      );
-      if (confirmed == null || confirmed.isEmpty) return;
+      final List<SampledPhoto> confirmed;
+      if (hardcore) {
+        // No preview, no reshuffle: what was sampled is what gets shared.
+        confirmed = photos;
+      } else {
+        final chosen = await showModalBottomSheet<List<SampledPhoto>>(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: const Color(0xFF16213E),
+          builder: (_) => _PhotoPreviewSheet(sampler: _sampler, initial: photos),
+        );
+        if (chosen == null || chosen.isEmpty) return;
+        confirmed = chosen;
+      }
       final uploaded = await c.uploadPhotos([
         for (final p in confirmed) p.bytes,
       ]);
@@ -356,6 +372,55 @@ class _LobbyScreenState extends State<LobbyScreen> {
     return 'NEED PHOTOS FROM 2+ PLAYERS';
   }
 
+  /// States the room's photo mode before anyone uploads.
+  ///
+  /// A player who does not notice they are in hardcore mode and shares
+  /// something private is exactly the failure this must not cause, so the
+  /// hardcore case is spelled out in full rather than hinted at, and the
+  /// unknown case says so instead of implying a preview is coming.
+  Widget _photoModeNotice() {
+    final hardcore = c.hardcore;
+    final (IconData icon, Color color, String text) = switch (hardcore) {
+      null => (
+        Icons.hourglass_empty,
+        Colors.white54,
+        'Checking how photos are shared in this game…',
+      ),
+      true => (
+        Icons.visibility_off,
+        const Color(0xFFE94560),
+        'HARDCORE — your photos are picked at random and shared '
+            'without showing them to you first.',
+      ),
+      false => (
+        Icons.visibility,
+        Colors.white70,
+        'You will see the picked photos and can reshuffle before sharing.',
+      ),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight:
+                    hardcore == true ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _bottomControls() {
     // Everyone can add a photo; only the host can start, and only once at
     // least two people have contributed (the server enforces the same rule).
@@ -364,11 +429,12 @@ class _LobbyScreenState extends State<LobbyScreen> {
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
+          _photoModeNotice(),
           SizedBox(
             width: double.infinity,
             height: 50,
             child: OutlinedButton.icon(
-              onPressed: _uploading ? null : _addPhotos,
+              onPressed: _uploading || !c.photoModeKnown ? null : _addPhotos,
               icon: _uploading
                   ? const SizedBox(
                       width: 18,

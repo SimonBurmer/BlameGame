@@ -60,3 +60,12 @@ echo "web      favicon + 4 icons"
 "${RAST[@]}" "$SRC/logo_mark.svg" alpha \
   "$SRC/logo_mark.png:96" "$SRC/2.0x/logo_mark.png:192" "$SRC/3.0x/logo_mark.png:288"
 echo "in-app   logo_mark.png at 1x/2x/3x"
+
+# --- Website --------------------------------------------------------------
+# apps/website ships no build-time image pipeline: its assets come from the
+# same vectors as the app's, so the site cannot drift from the icon.
+WEB=apps/website/public
+mkdir -p "$WEB"
+"${RAST[@]}" "$SRC/app_icon.svg" opaque "$WEB/favicon.png:48" "$WEB/apple-touch-icon.png:180"
+"${RAST[@]}" "$SRC/og_image.svg" opaque "$WEB/og-image.png:1200x630"
+echo "website  favicon, apple-touch-icon, og-image"

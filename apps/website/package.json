@@ -1,0 +1,26 @@
+{
+  "name": "@blame-game/website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Marketing site for Blame Game. Prerendered, no client JavaScript.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build --ssr src/entry-static.tsx --outDir .ssr && node .ssr/entry-static.js",
+    "preview": "npm run build && node --run serve",
+    "serve": "node ../../scripts/serve-website.mjs"
+  },
+  "dependencies": {
+    "@blame-game/brand": "*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.9"
+  }
+}

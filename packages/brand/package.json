@@ -1,0 +1,16 @@
+{
+  "name": "@blame-game/brand",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Brand tokens shared between the app and the website.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,7 +1,7 @@
 ---
 id: TASK-12
 title: Room and upload lifecycle cleanup / eviction
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
 updated_date: '2026-08-22 13:41'

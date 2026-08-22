@@ -7,6 +7,7 @@ to every socket currently connected to that room.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Dict, List
 
 from fastapi import WebSocket
@@ -31,16 +32,21 @@ class ConnectionManager:
     async def broadcast(self, room_code: str, message: dict) -> None:
         """Send a JSON message to every socket connected to the room.
 
-        Dead sockets are skipped and cleaned up rather than crashing the send.
+        Sends run concurrently: sequentially, one slow client would hold up
+        everyone else's events, and rounds are timed, so a stalled peer would
+        eat other players' round time. Dead sockets are cleaned up rather than
+        crashing the send.
         """
-        dead: List[WebSocket] = []
-        for ws in list(self._rooms.get(room_code, [])):
-            try:
-                await ws.send_json(message)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(room_code, ws)
+        sockets = list(self._rooms.get(room_code, []))
+        if not sockets:
+            return
+        results = await asyncio.gather(
+            *(ws.send_json(message) for ws in sockets),
+            return_exceptions=True,
+        )
+        for ws, result in zip(sockets, results):
+            if isinstance(result, BaseException):
+                self.disconnect(room_code, ws)
 
 
 # Process-wide singleton used by the API layer.

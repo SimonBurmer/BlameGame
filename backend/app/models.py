@@ -42,6 +42,11 @@ class Round:
     photo: Photo
     # guesses maps player_id -> guessed_owner_id, so a player can't guess twice.
     guesses: Dict[str, str] = field(default_factory=dict)
+    # Epoch seconds when this round closes, set by the RoundDriver when the
+    # round starts. The server scores from this rather than trusting a
+    # client-supplied countdown, so a wrong phone clock or a patched client
+    # can't mint points.
+    ends_at: Optional[float] = None
 
 
 @dataclass

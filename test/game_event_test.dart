@@ -77,6 +77,31 @@ void main() {
     expect(r.players.every((p) => p.score == 0), true);
   });
 
+  test('decodes player_left with the refreshed roster', () {
+    final e = GameEvent.fromJson({
+      'type': 'player_left',
+      'player_id': 'p2',
+      'kicked': true,
+      'players': [
+        {'id': 'p1', 'name': 'Emma', 'score': 0, 'is_host': true},
+      ],
+    });
+    expect(e, isA<PlayerLeft>());
+    final left = e as PlayerLeft;
+    expect(left.playerId, 'p2');
+    expect(left.kicked, isTrue);
+    expect(left.players.map((p) => p.name), ['Emma']);
+  });
+
+  test('player_left defaults kicked to false when absent', () {
+    final e = GameEvent.fromJson({
+      'type': 'player_left',
+      'player_id': 'p2',
+      'players': <Map<String, dynamic>>[],
+    });
+    expect((e as PlayerLeft).kicked, isFalse);
+  });
+
   test('unknown event type falls back to UnknownEvent', () {
     final e = GameEvent.fromJson({'type': 'something_new'});
     expect(e, isA<UnknownEvent>());

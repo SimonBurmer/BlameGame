@@ -44,6 +44,20 @@ class _LobbyScreenState extends State<LobbyScreen> {
     // Guard first: this fires from the WebSocket stream, so the State can be
     // defunct by now and Navigator.of(context) would throw.
     if (!mounted) return;
+    // Kicked out: leave the lobby instead of sitting in a room we're not in.
+    if (!_navigated && c.hasLeftRoom) {
+      _navigated = true;
+      final reason = c.removedFromRoom;
+      // Grab the messenger before popping: showing the snackbar on this route
+      // and then popping takes the explanation down with the lobby, so the
+      // kicked player is ejected with no idea why.
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop();
+      if (reason != null) {
+        messenger.showSnackBar(SnackBar(content: Text(reason)));
+      }
+      return;
+    }
     // When the backend starts the game, move everyone to the game screen.
     if (!_navigated && c.phase != GamePhase.lobby) {
       _navigated = true;
@@ -96,6 +110,46 @@ class _LobbyScreenState extends State<LobbyScreen> {
     }
   }
 
+  /// Leave the room. We pop regardless: the player asked to go, so a failed
+  /// call shouldn't trap them in a lobby they've mentally left.
+  Future<void> _leave() async {
+    try {
+      await c.leaveRoom();
+    } catch (_) {
+      // Ignored on purpose -- see above.
+    }
+    if (mounted && !_navigated) {
+      _navigated = true;
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _kick(GamePlayer player) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Remove ${player.name}?'),
+        content: Text("They'll be dropped from the room and lose their photos."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await c.kickPlayer(player.id);
+    } catch (e) {
+      _snack('Could not remove ${player.name}: $e');
+    }
+  }
+
   void _snack(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -124,8 +178,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     // half the 48x48 minimum tap target and carries no button
                     // semantics for screen readers.
                     IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      tooltip: 'Back',
+                      onPressed: _leave,
+                      tooltip: 'Leave room',
                       icon: const Icon(
                         Icons.arrow_back_ios,
                         color: Colors.white,
@@ -279,6 +333,17 @@ class _LobbyScreenState extends State<LobbyScreen> {
               Icons.hourglass_empty,
               semanticLabel: '${player.name} has not added photos yet',
               color: Colors.white.withValues(alpha: 0.35),
+            ),
+          // Only the host can kick, and never themselves — the server enforces
+          // both, this just keeps the button from offering an impossible action.
+          if (c.isHost && player.id != c.myPlayerId)
+            IconButton(
+              onPressed: () => _kick(player),
+              tooltip: 'Remove ${player.name}',
+              icon: Icon(
+                Icons.person_remove,
+                color: Colors.white.withValues(alpha: 0.5),
+              ),
             ),
         ],
       ),

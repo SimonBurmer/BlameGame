@@ -11,6 +11,7 @@ labels:
   - gameplay
 dependencies:
   - TASK-42
+priority: high
 ordinal: 43000
 ---
 

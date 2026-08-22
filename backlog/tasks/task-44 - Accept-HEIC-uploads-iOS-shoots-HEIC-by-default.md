@@ -4,12 +4,13 @@ title: Accept HEIC uploads (iOS shoots HEIC by default)
 status: In Progress
 assignee: []
 created_date: '2026-08-22 13:45'
-updated_date: '2026-08-22 18:02'
+updated_date: '2026-08-22 18:06'
 labels:
   - backend
   - frontend
   - ios
 dependencies: []
+priority: high
 ordinal: 44000
 ---
 

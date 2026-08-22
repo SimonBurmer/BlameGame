@@ -2,6 +2,7 @@
 // No real network, no backend, no emulator — pure `flutter test`.
 
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -100,6 +101,32 @@ void main() {
     expect(captured.method, 'POST');
     expect(captured.url.toString(), 'http://test/rooms/ABC12/reset');
     expect(jsonDecode(captured.body)['host_id'], 'p1');
+  });
+
+  test('uploadPhoto labels the part from the bytes, not the filename', () async {
+    // A PNG used to be announced as image/jpeg and stored as .jpg.
+    final bodies = <String>[];
+    final mock = MockClient((req) async {
+      bodies.add(utf8.decode(req.bodyBytes, allowMalformed: true));
+      return http.Response(jsonEncode({'url': '/p.png'}), 200);
+    });
+    final api = ApiClient(httpClient: mock, baseUrl: 'http://test');
+
+    final png = Uint8List.fromList(
+      [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3],
+    );
+    await api.uploadPhoto('ABC12', 'p1', png, filename: 'photo_0');
+    await api.uploadPhoto(
+      'ABC12',
+      'p1',
+      Uint8List.fromList([0xFF, 0xD8, 0xFF, 1, 2, 3]),
+      filename: 'photo_1',
+    );
+
+    expect(bodies[0], contains('image/png'));
+    expect(bodies[0], contains('filename="photo_0.png"'));
+    expect(bodies[1], contains('image/jpeg'));
+    expect(bodies[1], contains('filename="photo_1.jpeg"'));
   });
 
   test('non-2xx response throws ApiException', () async {

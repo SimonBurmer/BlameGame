@@ -1,10 +1,10 @@
 ---
 id: TASK-16
 title: Leave-room and host kick-player support
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 15:33'
+updated_date: '2026-08-22 17:56'
 labels:
   - frontend
   - backend

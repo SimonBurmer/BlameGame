@@ -1,10 +1,10 @@
 ---
 id: TASK-42
 title: Preview and reshuffle the randomly-picked photos before uploading
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-22 13:37'
-updated_date: '2026-08-22 13:43'
+updated_date: '2026-08-22 17:56'
 labels:
   - frontend
   - ui

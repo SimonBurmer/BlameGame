@@ -1,10 +1,10 @@
 ---
 id: TASK-13
 title: Fix photo content-type handling (stop forcing .jpg)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 13:42'
+updated_date: '2026-08-22 17:56'
 labels:
   - frontend
   - backend
@@ -32,7 +32,5 @@ Backend always writes uploads as .jpg regardless of real format (main.py), and t
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-JPEG/PNG now round-trip with their real extension and content-type: the upload magic-byte sniff picks the extension, so the stored file, the photo URL and FileResponse's inferred content-type all agree. Client sends the real subtype too instead of hardcoding image/jpeg.
-
-AC#3 is only partly met and stays open: HEIC is NOT covered. The server allowlist is JPEG/PNG by magic bytes and never accepted HEIC, so 'other common formats' would need transcoding (iOS shoots HEIC by default, so this is a real gap worth its own ticket). PR: https://github.com/SimonBurmer/BlameGame/pull/25
+JPEG/PNG now round-trip with their real extension and content-type. HEIC is NOT covered and AC#3 stays unchecked - split out as TASK-44. Merged in PR #25.
 <!-- SECTION:NOTES:END -->

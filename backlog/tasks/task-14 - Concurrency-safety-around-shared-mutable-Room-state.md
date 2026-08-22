@@ -1,10 +1,10 @@
 ---
 id: TASK-14
 title: Concurrency safety around shared mutable Room state
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 13:45'
+updated_date: '2026-08-22 17:56'
 labels:
   - backend
   - core

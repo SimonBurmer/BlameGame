@@ -599,6 +599,21 @@ def test_jpeg_round_trips_as_jpeg(client):
     assert client.get(url).headers["content-type"] == "image/jpeg"
 
 
+def test_heic_upload_is_rejected(client):
+    # iOS shoots HEIC by default, but the Flutter client cannot decode HEIC when
+    # the photo is served back, so the server must keep refusing it. The client
+    # transcodes to JPEG at sample time instead (see lib/services/photo_sampler
+    # .dart) — widening this allowlist would store photos nobody can display.
+    # Real HEIC magic: an ISO-BMFF box with an `ftypheic` major brand at byte 4.
+    heic = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00heicmif1"
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    resp = _upload_photo(client, code, host_id, content=heic)
+    assert resp.status_code == 400
+    assert "JPEG or PNG" in resp.json()["detail"]
+
+
 def test_photo_route_does_not_serve_files_outside_the_upload_dir(client):
     # `/rooms/../photos/<name>` used to resolve out of UPLOAD_DIR and serve
     # arbitrary files from the working directory.

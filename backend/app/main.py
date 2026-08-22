@@ -83,7 +83,7 @@ async def _read_capped(file: UploadFile) -> bytes:
         raise HTTPException(status_code=400, detail="empty file")
     return b"".join(chunks)
 
-app = FastAPI(title="PhotoRoulette API")
+app = FastAPI(title="Blame Game API")
 
 # Open CORS: the Flutter app (incl. web/dev) will call from another origin.
 app.add_middleware(

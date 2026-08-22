@@ -6,7 +6,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:flutter_application_1/services/api_client.dart';
+import 'package:blame_game/services/api_client.dart';
 
 void main() {
   test('createRoom posts to /rooms and returns the code', () async {

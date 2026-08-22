@@ -1,6 +1,6 @@
-# PhotoRoulette2 — Project Knowledge
+# Blame Game — Project Knowledge
 
-A clone of the "Photo Roulette" party game: players join a room, contribute random
+A party game in the mould of Photo Roulette: players join a room, contribute random
 photos from their camera roll, then guess *whose* photo each round shows. Points are
 awarded for correct + fast guesses; rounds tally into a final leaderboard.
 

@@ -1,7 +1,7 @@
 [project]
-name = "photo-roulette-backend"
+name = "blame-game-backend"
 version = "0.1.0"
-description = "FastAPI backend for the PhotoRoulette game (in-memory, WebSockets)."
+description = "FastAPI backend for the Blame Game game (in-memory, WebSockets)."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110",

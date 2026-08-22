@@ -92,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       size: 72, color: Colors.white),
                   const SizedBox(height: 16),
                   const Text(
-                    'PHOTO\nROULETTE',
+                    'BLAME\nGAME',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 44,

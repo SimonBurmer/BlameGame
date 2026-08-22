@@ -1,6 +1,6 @@
-# PhotoRoulette Backend
+# Blame Game backend
 
-FastAPI backend for the PhotoRoulette game: rooms, players, photo upload, and a
+FastAPI backend for the Blame Game game: rooms, players, photo upload, and a
 backend-driven round timer. State is held **in memory** (no database) and live
 updates are pushed over **WebSockets**.
 

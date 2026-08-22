@@ -46,3 +46,8 @@ app.*.map.json
 
 # Claude Code isolated worktrees (subagent isolation)
 .claude/worktrees/
+
+# Photos uploaded during local play. The backend writes these to uploads/ at
+# the repo root; backend/.gitignore only covers backend/uploads/, so without
+# this real photos from test games get staged.
+/uploads/

@@ -1,10 +1,10 @@
 ---
 id: TASK-46
 title: 'Crash on game start: GameController used after being disposed'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 18:07'
-updated_date: '2026-08-22 22:35'
+updated_date: '2026-08-22 22:38'
 labels:
   - bug
   - flutter

@@ -1,10 +1,10 @@
 ---
 id: TASK-17
 title: In-round live scoreboard / per-round results
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-22 22:50'
 labels:
   - frontend
   - backend
@@ -12,7 +12,7 @@ labels:
 milestone: m-3
 dependencies: []
 priority: low
-ordinal: 17000
+ordinal: 48000
 ---
 
 ## Description

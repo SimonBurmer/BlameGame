@@ -1,10 +1,10 @@
 ---
 id: TASK-47
 title: 'Host game settings in the lobby (rounds, round length, hardcore mode)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 18:07'
-updated_date: '2026-08-22 22:44'
+updated_date: '2026-08-22 22:50'
 labels:
   - frontend
   - backend

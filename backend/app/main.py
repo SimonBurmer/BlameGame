@@ -188,14 +188,20 @@ async def upload_photo(
         raise HTTPException(status_code=400, detail="file must be an image")
 
     data = await _read_capped(file)
-    # Trust the bytes, not the client's content-type header.
-    if not data.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
+    # Trust the bytes, not the client's content-type header -- that also means
+    # the extension we store comes from the bytes, so a PNG isn't served as
+    # a .jpg and decoded by whatever the client guesses.
+    if data.startswith(b"\xff\xd8\xff"):
+        ext = "jpg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        ext = "png"
+    else:
         raise HTTPException(status_code=400, detail="file must be a JPEG or PNG")
 
     # Register the photo before writing it, so a rejected upload never leaves
     # an orphan file on disk.
     photo_id = uuid.uuid4().hex[:12]
-    url = f"/rooms/{room.code}/photos/{photo_id}.jpg"
+    url = f"/rooms/{room.code}/photos/{photo_id}.{ext}"
     try:
         photo = add_photo(room, owner_id=owner_id, url=url)
     except GameError as e:
@@ -203,7 +209,7 @@ async def upload_photo(
 
     room_dir = UPLOAD_DIR / room.code
     room_dir.mkdir(parents=True, exist_ok=True)
-    (room_dir / f"{photo_id}.jpg").write_bytes(data)
+    (room_dir / f"{photo_id}.{ext}").write_bytes(data)
 
     # Tell the lobby who is ready, so the host isn't guessing.
     await manager.broadcast(

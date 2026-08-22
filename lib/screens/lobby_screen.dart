@@ -11,7 +11,11 @@ import 'game_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
   final GameController controller;
-  const LobbyScreen({super.key, required this.controller});
+
+  /// Injectable so widget tests can drive the preview without a camera roll.
+  final PhotoSampler? sampler;
+
+  const LobbyScreen({super.key, required this.controller, this.sampler});
 
   @override
   State<LobbyScreen> createState() => _LobbyScreenState();
@@ -19,7 +23,7 @@ class LobbyScreen extends StatefulWidget {
 
 class _LobbyScreenState extends State<LobbyScreen> {
   GameController get c => widget.controller;
-  final _sampler = PhotoSampler();
+  late final _sampler = widget.sampler ?? PhotoSampler();
   bool _photoUploaded = false;
   bool _uploading = false;
   bool _navigated = false;
@@ -65,7 +69,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
     setState(() {});
   }
 
-  /// Auto-samples random photos from the camera roll and batch-uploads them.
+  /// Samples random photos, shows them for confirmation, and only uploads what
+  /// the player accepts. Nothing leaves the device before they say so.
   Future<void> _addPhotos() async {
     if (_uploading) return;
     setState(() => _uploading = true);
@@ -75,7 +80,17 @@ class _LobbyScreenState extends State<LobbyScreen> {
         _snack('No photos found in your camera roll');
         return;
       }
-      final uploaded = await c.uploadPhotos(photos);
+      if (!mounted) return;
+      final confirmed = await showModalBottomSheet<List<SampledPhoto>>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: const Color(0xFF16213E),
+        builder: (_) => _PhotoPreviewSheet(sampler: _sampler, initial: photos),
+      );
+      if (confirmed == null || confirmed.isEmpty) return;
+      final uploaded = await c.uploadPhotos([
+        for (final p in confirmed) p.bytes,
+      ]);
       if (mounted) setState(() => _photoUploaded = true);
       _snack('Added $uploaded photo${uploaded == 1 ? '' : 's'}');
     } on PhotoPermissionDenied {
@@ -422,6 +437,140 @@ class _LobbyScreenState extends State<LobbyScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Preview of the sampled photos with a reshuffle, so a player sees exactly
+/// what they are about to share before it is uploaded.
+class _PhotoPreviewSheet extends StatefulWidget {
+  final PhotoSampler sampler;
+  final List<SampledPhoto> initial;
+
+  const _PhotoPreviewSheet({required this.sampler, required this.initial});
+
+  @override
+  State<_PhotoPreviewSheet> createState() => _PhotoPreviewSheetState();
+}
+
+class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
+  late List<SampledPhoto> _photos = widget.initial;
+
+  /// Everything already offered, so a reshuffle doesn't re-show the same
+  /// pictures the player just rejected.
+  late final Set<String> _seen = {for (final p in widget.initial) p.id};
+  bool _reshuffling = false;
+
+  Future<void> _reshuffle() async {
+    setState(() => _reshuffling = true);
+    try {
+      final next = await widget.sampler.sampleRandomPhotos(
+        count: photoSampleCount,
+        exclude: _seen,
+      );
+      if (!mounted) return;
+      if (next.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No other photos to shuffle in')),
+        );
+        return;
+      }
+      setState(() {
+        _photos = next;
+        _seen.addAll(next.map((p) => p.id));
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Reshuffle failed: $e')));
+    } finally {
+      if (mounted) setState(() => _reshuffling = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'THESE PHOTOS?',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Nothing is uploaded until you tap Use these',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Flexible(
+              child: GridView.builder(
+                shrinkWrap: true,
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                    ),
+                itemCount: _photos.length,
+                itemBuilder: (context, i) => ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.memory(
+                    _photos[i].thumbnail,
+                    fit: BoxFit.cover,
+                    semanticLabel: 'Selected photo ${i + 1}',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _reshuffling ? null : _reshuffle,
+                    icon: const Icon(Icons.shuffle, color: Colors.white),
+                    label: const Text(
+                      'RESHUFFLE',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _reshuffling
+                        ? null
+                        : () => Navigator.pop(context, _photos),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE94560),
+                    ),
+                    child: const Text(
+                      'USE THESE',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

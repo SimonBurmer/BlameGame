@@ -669,3 +669,73 @@ def test_websocket_rejects_a_non_player(client):
     with pytest.raises(Exception):
         with client.websocket_connect(f"/ws/{code}/not-a-player") as ws:
             ws.receive_json()
+
+
+# --- ending a room ---------------------------------------------------------
+
+def test_host_can_end_a_room_and_its_photos_go_with_it(client, tmp_path, monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path)
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _upload_photo(client, code, host_id)
+    assert (tmp_path / code).is_dir()
+
+    resp = client.request("DELETE", f"/rooms/{code}", params={"host_id": host_id})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+    assert not (tmp_path / code).exists()
+    assert client.get(f"/rooms/{code}").status_code == 404
+
+
+def test_only_host_can_end_a_room(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    resp = client.request("DELETE", f"/rooms/{code}", params={"host_id": jake_id})
+    assert resp.status_code == 403
+    assert client.get(f"/rooms/{code}").status_code == 200
+
+
+def test_end_unknown_room_404(client):
+    resp = client.request("DELETE", "/rooms/ZZZZZ", params={"host_id": "whoever"})
+    assert resp.status_code == 404
+
+
+def test_ending_a_room_broadcasts_room_closed(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        resp = client.request("DELETE", f"/rooms/{code}", params={"host_id": host_id})
+        assert resp.status_code == 200
+        assert ws.receive_json()["type"] == "room_closed"
+
+
+def test_evicting_a_stale_room_deletes_its_uploads(client, tmp_path, monkeypatch):
+    """The TTL sweep must take the photos with it, not just the dict entry."""
+    import app.main as main
+
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path)
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _upload_photo(client, code, host_id)
+    assert (tmp_path / code).is_dir()
+
+    # Age the room past the TTL rather than waiting six hours for it.
+    store.get_room(code).last_active -= store._ttl + 1
+    assert store.sweep() == [code]
+    assert not (tmp_path / code).exists()
+
+
+def test_upload_cleanup_refuses_a_path_outside_the_upload_dir(tmp_path, monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path)
+    victim = tmp_path.parent / "not-ours"
+    victim.mkdir()
+
+    main._delete_room_uploads("../not-ours")
+    assert victim.is_dir()

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -51,6 +52,25 @@ _UPLOAD_CHUNK = 64 * 1024
 _background_tasks: set[asyncio.Task] = set()
 
 logger = logging.getLogger(__name__)
+
+
+def _delete_room_uploads(code: str) -> None:
+    """Delete one room's upload directory, and nothing else.
+
+    Deleting a tree is destructive, so the target is re-derived from the room
+    code and checked to be a direct child of UPLOAD_DIR: a code containing
+    `..` or a separator resolves outside it and is refused rather than
+    recursively removing whatever it happens to point at.
+    """
+    base = UPLOAD_DIR.resolve()
+    room_dir = (base / code).resolve()
+    if room_dir.parent != base:
+        logger.error("refusing to delete uploads outside %s: %r", base, code)
+        return
+    shutil.rmtree(room_dir, ignore_errors=True)
+
+
+store.on_evict = _delete_room_uploads
 
 
 def _spawn(coro) -> None:
@@ -351,6 +371,19 @@ async def reset(code: str, body: ResetBody) -> dict:
         },
     )
     return _room_dict(room)
+
+
+@app.delete("/rooms/{code}")
+async def end_room(code: str, host_id: str) -> dict:
+    room = _get_room(code)
+    host = room.player_by_id(host_id)
+    if host is None or not host.is_host:
+        raise HTTPException(status_code=403, detail="only the host can end the room")
+    # Tell everyone before the room is gone: after the delete there is no room
+    # to broadcast to, and clients would just see their socket drop.
+    await manager.broadcast(room.code, {"type": "room_closed"})
+    store.delete_room(room.code)
+    return {"code": room.code, "deleted": True}
 
 
 # --- WebSocket -----------------------------------------------------------

@@ -71,10 +71,10 @@ class GameStore:
             if code not in self._rooms:
                 return code
 
-    def create_room(self) -> Room:
+    def create_room(self, hardcore: bool = False) -> Room:
         self.sweep()
         code = self._generate_code()
-        room = Room(code=code, last_active=self._time_fn())
+        room = Room(code=code, last_active=self._time_fn(), hardcore=hardcore)
         self._rooms[code] = room
         return room
 

@@ -61,9 +61,11 @@ class ApiClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
-  /// Create a new room; returns its join code.
-  Future<String> createRoom() async =>
-      (await _postJson('/rooms'))['code'] as String;
+  /// Create a new room; returns its join code. In hardcore mode photos are
+  /// uploaded blind, with no preview or reshuffle. The mode is fixed at
+  /// creation — see the note on the server's Room.hardcore.
+  Future<String> createRoom({bool hardcore = false}) async =>
+      (await _postJson('/rooms', {'hardcore': hardcore}))['code'] as String;
 
   /// Join a room by code; returns (playerId, isHost).
   Future<({String playerId, bool isHost})> joinRoom(
@@ -113,8 +115,8 @@ class ApiClient {
     return _decode(resp)['url'] as String;
   }
 
-  /// Fetch the current room snapshot (players, round length).
-  Future<({List<GamePlayer> players, int roundSeconds})> getRoom(
+  /// Fetch the current room snapshot (players, round length, photo mode).
+  Future<({List<GamePlayer> players, int roundSeconds, bool hardcore})> getRoom(
     String code,
   ) async {
     final resp = await _http.get(_uri('/rooms/$code')).timeout(_timeout);
@@ -125,6 +127,9 @@ class ApiClient {
     return (
       players: players,
       roundSeconds: (body['round_seconds'] as num).toInt(),
+      // Absent only when talking to a server older than hardcore mode, where
+      // every room is normal. Defaulting the other way would upload blind.
+      hardcore: body['hardcore'] as bool? ?? false,
     );
   }
 

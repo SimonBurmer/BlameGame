@@ -55,6 +55,43 @@ void main() {
       expect(socket.playerId, 'me');
     });
 
+    test('the photo mode is learned from the room snapshot', () async {
+      final (normal, _, _) = await joinedController();
+      expect(normal.hardcore, isFalse);
+      expect(normal.photoModeKnown, isTrue);
+
+      final recording = RecordingClient(
+        join: _joinOk,
+        snapshot: {..._snapshot, 'hardcore': true},
+      );
+      final hard = GameController(
+        api: ApiClient(httpClient: recording.client, baseUrl: 'http://test'),
+        socketFactory: fakeSocketFactory(FakeGameSocket()),
+      );
+      await hard.joinByCode('ABC12', 'Emma');
+      expect(hard.hardcore, isTrue);
+    });
+
+    test('the mode stays unknown until a snapshot lands', () async {
+      final controller = GameController(
+        api: ApiClient(
+          httpClient: RecordingClient(join: _joinOk, snapshot: 500).client,
+          baseUrl: 'http://test',
+        ),
+        socketFactory: fakeSocketFactory(FakeGameSocket()),
+      );
+      expect(controller.photoModeKnown, isFalse);
+
+      // A failed join must not leave a mode behind that would let a client
+      // sample: unknown is not the same as normal.
+      await expectLater(
+        controller.joinByCode('ABC12', 'Emma'),
+        throwsA(isA<ApiException>()),
+      );
+      expect(controller.hardcore, isNull);
+      expect(controller.photoModeKnown, isFalse);
+    });
+
     test('a failed snapshot leaves no half-joined controller', () async {
       final recording = RecordingClient(join: _joinOk, snapshot: 500);
       final controller = GameController(

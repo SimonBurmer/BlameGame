@@ -1,10 +1,10 @@
 ---
 id: TASK-12
 title: Room and upload lifecycle cleanup / eviction
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-22 13:41'
 labels:
   - backend
   - infra
@@ -22,7 +22,7 @@ Rooms and their upload directories accumulate forever — no cleanup or eviction
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Finished/abandoned rooms are evicted after a TTL
-- [ ] #2 A room's photos are cleaned up when the room is evicted
-- [ ] #3 An endpoint exists to explicitly end/delete a room
+- [x] #1 Finished/abandoned rooms are evicted after a TTL
+- [x] #2 A room's photos are cleaned up when the room is evicted
+- [x] #3 An endpoint exists to explicitly end/delete a room
 <!-- AC:END -->

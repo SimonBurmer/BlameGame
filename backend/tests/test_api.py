@@ -104,6 +104,111 @@ def test_hardcore_mode_is_not_mutable_after_creation(client):
     assert client.get(f"/rooms/{code}").json()["hardcore"] is False
 
 
+def test_host_sets_settings_from_the_lobby(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    resp = client.post(
+        f"/rooms/{code}/settings",
+        json={"host_id": host, "total_rounds": 8, "round_seconds": 20, "hardcore": True},
+    )
+    assert resp.status_code == 200
+    snapshot = client.get(f"/rooms/{code}").json()
+    assert snapshot["total_rounds"] == 8
+    assert snapshot["round_seconds"] == 20
+    assert snapshot["hardcore"] is True
+
+
+def test_start_uses_the_lobby_settings(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    client.post(
+        f"/rooms/{code}/settings",
+        json={"host_id": host, "total_rounds": 3, "round_seconds": 25},
+    )
+    _upload_photo(client, code, host)
+    _upload_photo(client, code, jake)
+    body = client.post(f"/rooms/{code}/start", json={"host_id": host}).json()
+    assert body["total_rounds"] == 3
+    assert body["round_seconds"] == 25
+
+
+def test_only_the_host_can_change_settings(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    resp = client.post(
+        f"/rooms/{code}/settings", json={"host_id": jake, "total_rounds": 9}
+    )
+    assert resp.status_code == 403
+    assert client.get(f"/rooms/{code}").json()["total_rounds"] == 5
+
+
+def test_hardcore_locks_server_side_once_a_photo_is_uploaded(client):
+    # The adversarial case: a client can post whatever it likes, so the lock
+    # lives on the server. Flipping the mode after someone has already
+    # preview-approved and shared a photo must be refused.
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    _upload_photo(client, code, host)
+
+    resp = client.post(f"/rooms/{code}/settings", json={"host_id": host, "hardcore": True})
+    assert resp.status_code == 400
+    assert "locked" in resp.json()["detail"]
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is False
+
+
+def test_rounds_stay_editable_after_photos_are_uploaded(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    _upload_photo(client, code, host)
+    resp = client.post(
+        f"/rooms/{code}/settings",
+        json={"host_id": host, "total_rounds": 7, "round_seconds": 15},
+    )
+    assert resp.status_code == 200
+    snapshot = client.get(f"/rooms/{code}").json()
+    assert (snapshot["total_rounds"], snapshot["round_seconds"]) == (7, 15)
+
+
+def test_restating_the_current_hardcore_value_is_allowed_after_photos(client):
+    # Only a *change* is locked; a client resending the unchanged value (a
+    # full-settings post) must not be rejected.
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    _upload_photo(client, code, host)
+    resp = client.post(
+        f"/rooms/{code}/settings", json={"host_id": host, "hardcore": False}
+    )
+    assert resp.status_code == 200
+
+
+def test_settings_cannot_be_changed_once_the_game_is_running(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    _upload_photo(client, code, host)
+    _upload_photo(client, code, jake)
+    client.post(f"/rooms/{code}/start", json={"host_id": host})
+    resp = client.post(
+        f"/rooms/{code}/settings", json={"host_id": host, "total_rounds": 2}
+    )
+    assert resp.status_code == 400
+
+
+def test_settings_are_broadcast_to_every_client(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    with client.websocket_connect(f"/ws/{code}/{jake}") as ws:
+        client.post(
+            f"/rooms/{code}/settings", json={"host_id": host, "total_rounds": 6}
+        )
+        event = ws.receive_json()
+    assert event["type"] == "settings_updated"
+    assert event["total_rounds"] == 6
+
+
 def test_join_room(client):
     code = client.post("/rooms").json()["code"]
     resp = client.post(f"/rooms/{code}/join", json={"name": "Emma"})
@@ -272,7 +377,9 @@ def test_host_can_reset_finished_room(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "lobby"
-    assert body["total_rounds"] == 0
+    # Back in the lobby the snapshot reports the configured round count (the
+    # one the last game was started with), not the cleared round list.
+    assert body["total_rounds"] == 1
     # Same room code, same players, scores carried over -- no rejoin needed.
     assert body["code"] == code
     assert {p["name"] for p in body["players"]} == {"Emma", "Jake"}

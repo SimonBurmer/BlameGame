@@ -4,7 +4,7 @@ title: 'Crash on game start: GameController used after being disposed'
 status: In Progress
 assignee: []
 created_date: '2026-08-22 18:07'
-updated_date: '2026-08-22 18:14'
+updated_date: '2026-08-22 22:35'
 labels:
   - bug
   - flutter
@@ -32,20 +32,18 @@ A live trace is available. Two simulators are running under  with output streami
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 The root cause is identified from a real stack trace, not inferred
-- [ ] #2 Starting a game no longer disposes a controller that is still in use
-- [ ] #3 A regression test reproduces the crash and fails without the fix
+- [x] #2 Starting a game no longer disposes a controller that is still in use
+- [x] #3 A regression test reproduces the crash and fails without the fix
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-ROOT CAUSE FOUND (agent stopped before the fix landed).
+ROOT CAUSE: Navigator.pushReplacement completes the route it replaces. So the lobby -> game hand-off resolved HomeScreen._run's awaited Navigator.push, which disposed the controller while GameScreen.initState was calling addListener on it. Same shape on game -> results and results -> lobby (rematch).
 
-Navigator.pushReplacement completes the route it replaces. So when the lobby pushReplacement's the game screen, HomeScreen._run's awaited Navigator.push resolves mid-hand-off and runs controller.dispose() - while GameScreen.initState is calling addListener on that same controller. Same shape applies to game -> results.
+FIX: teardown is deferred while any screen is still listening, and runs from removeListener once the last one lets go. Fixed once on GameController rather than per screen, so all three transitions are covered. Deferring rather than skipping keeps the WebSocket and http.Client from leaking a connection per game (the TASK-34 bug).
 
-This is why two earlier unit-test repro attempts failed: the trigger is navigation/route completion, not a late async result. A socket event cannot reach a disposed controller (dispose closes the socket first) and an in-flight guess completing after dispose is harmless.
+test/navigation_disposal_test.dart drives Home -> Lobby -> Game through a real Navigator and reproduces the crash; a second test asserts the controller IS still disposed on a genuine unwind, so a fix cannot just delete the dispose call.
 
-A failing widget test is committed on branch fix/task-46-controller-used-after-dispose (test/navigation_disposal_test.dart, commit 63a2cdb). It drives Home -> Lobby -> (RoundStarted) -> Game through a real Navigator and reproduces the exact production error. It also has a second test asserting the controller IS still disposed on a genuine unwind (back out of the lobby), so a fix cannot just delete the dispose call and leak the socket.
-
-Still to do: the fix itself, plus red-green confirmation and the full test run.
+Verified by the orchestrator on the branch: flutter test 85 passed, flutter analyze clean. Confirmed working in the real app by the user. PR: https://github.com/SimonBurmer/BlameGame/pull/38
 <!-- SECTION:NOTES:END -->

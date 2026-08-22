@@ -1,10 +1,10 @@
 ---
 id: TASK-47
 title: 'Host game settings in the lobby (rounds, round length, hardcore mode)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-22 18:07'
-updated_date: '2026-08-22 18:08'
+updated_date: '2026-08-22 22:43'
 labels:
   - frontend
   - backend
@@ -29,9 +29,20 @@ The backend must enforce the lock, not just the UI - a client can post whatever 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Host can set rounds and round length from the lobby instead of hardcoded values
-- [ ] #2 Host can toggle hardcore mode in the lobby while no photos have been uploaded
-- [ ] #3 Hardcore mode locks server-side once the first photo is uploaded
-- [ ] #4 Non-host players see the current settings read-only
-- [ ] #5 Settings changes are broadcast to every client in the room
+- [x] #1 Host can set rounds and round length from the lobby instead of hardcoded values
+- [x] #2 Host can toggle hardcore mode in the lobby while no photos have been uploaded
+- [x] #3 Hardcore mode locks server-side once the first photo is uploaded
+- [x] #4 Non-host players see the current settings read-only
+- [x] #5 Settings changes are broadcast to every client in the room
+- [x] #6 The hardcore toggle is removed from the home screen, not duplicated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Hardcore moved entirely to the lobby: the home-screen Switch and its explanatory text are gone. One obvious place to set it. Rooms are created non-hardcore (POST /rooms still accepts a hardcore body for API compat, but the client no longer sends it) and the host turns it on in the lobby while zero photos exist.
+
+Settings ride a new settings_updated broadcast rather than the room snapshot -- there was no snapshot event to reuse, only the REST GET.
+
+Backend enforces the hardcore lock in game.set_settings: a *change* is rejected once room.photos is non-empty (restating the current value is fine, so a full-settings post from a client isn't spuriously refused). Rounds/round length stay editable until start. POST /rooms/{code}/start now defaults to the room's configured settings.
+<!-- SECTION:NOTES:END -->

@@ -17,10 +17,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _busy = false;
   String? _error;
 
-  /// Fixed for the room's lifetime once it is created, so it is chosen here
-  /// rather than in the lobby — see the note on the server's Room.hardcore.
-  bool _hardcore = false;
-
   @override
   void dispose() {
     _nameController.dispose();
@@ -28,8 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  Future<void> _createRoom() =>
-      _run((c) => c.createAndHost(_name, hardcore: _hardcore));
+  Future<void> _createRoom() => _run((c) => c.createAndHost(_name));
 
   Future<void> _joinRoom() {
     final code = _codeController.text.trim().toUpperCase();
@@ -132,8 +127,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: CircularProgressIndicator(color: Color(0xFFE94560)),
                     )
                   else ...[
-                    _hardcoreToggle(),
-                    const SizedBox(height: 12),
                     _primaryButton('CREATE GAME', Icons.add, _createRoom),
                     const SizedBox(height: 24),
                     Row(
@@ -189,29 +182,6 @@ class _HomeScreenState extends State<HomeScreen> {
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
-        ),
-      ),
-    );
-  }
-
-  /// Hardcore opt-in. Applies to everyone in the room and cannot be changed
-  /// afterwards, so the wording says what it actually costs the players.
-  Widget _hardcoreToggle() {
-    return SwitchListTile.adaptive(
-      value: _hardcore,
-      onChanged: (v) => setState(() => _hardcore = v),
-      contentPadding: EdgeInsets.zero,
-      activeThumbColor: const Color(0xFFE94560),
-      title: const Text(
-        'Hardcore mode',
-        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-      ),
-      subtitle: Text(
-        'Everyone\'s photos are shared without a preview or reshuffle. '
-        'Cannot be changed once the game is created.',
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.6),
-          fontSize: 12,
         ),
       ),
     );

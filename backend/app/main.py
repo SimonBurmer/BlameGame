@@ -333,6 +333,11 @@ async def _remove_and_broadcast(room: Room, player_id: str, *, kicked: bool) -> 
             "players": [_player_dict(p, room) for p in room.players],
         },
     )
+    if kicked:
+        # After the broadcast, so the kicked client still gets told why — but
+        # not dependent on it reacting: the feed carries every photo URL, so
+        # the server closes their socket itself.
+        await manager.close_player(room.code, player_id)
     return _room_dict(room)
 
 
@@ -406,7 +411,7 @@ async def game_socket(websocket: WebSocket, code: str, player_id: str) -> None:
     # client typed, and broadcasts target room.code -- registering under a
     # lowercase code produced a socket that connected fine and then silently
     # received nothing, forever.
-    await manager.connect(room.code, websocket)
+    await manager.connect(room.code, player_id, websocket)
     try:
         while True:
             # We don't require inbound messages; keep the socket open so the

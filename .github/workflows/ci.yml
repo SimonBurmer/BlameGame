@@ -60,9 +60,32 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
-  deploy:
-    needs: [backend-test, backend-build, flutter-test]
+  # Did this push actually touch the backend? Deploying the Flutter-only
+  # commits too would restart the server for nothing — and because game state
+  # is in memory, every restart drops all live rooms.
+  backend-changed:
+    name: Detect backend changes
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.check.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Compare against the first parent rather than github.event.before, which
+      # is all-zeros on a branch's first push and stale after a force-push.
+      - id: check
+        run: |
+          if git diff --quiet HEAD^ HEAD -- backend/ ':(exclude,glob)backend/**.md' .github/workflows/ci.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: [backend-test, backend-build, flutter-test, backend-changed]
+    if: github.ref == 'refs/heads/main' && needs.backend-changed.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

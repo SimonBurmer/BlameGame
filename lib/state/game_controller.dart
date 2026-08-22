@@ -407,8 +407,34 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  /// Set once the owner has asked for teardown; see [dispose].
+  bool _disposeRequested = false;
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    // The screen that just let go may have been the last one holding this
+    // controller open past a requested teardown.
+    if (_disposeRequested && !hasListeners) dispose();
+  }
+
+  /// Tears down the connections and the notifier — once no screen needs it.
+  ///
+  /// The owner (`HomeScreen`) disposes when its awaited `Navigator.push`
+  /// resolves. But `pushReplacement` *completes the route it replaces*, so
+  /// that await also fires in the middle of a lobby -> game hand-off (and
+  /// game -> results, and results -> lobby on rematch). Disposing there killed
+  /// a controller the incoming screen was already listening to: the
+  /// "GameController was used after being disposed" crash on game start.
+  ///
+  /// So teardown is deferred while any screen is still listening, and runs
+  /// from [removeListener] as soon as the last one lets go. Deferring rather
+  /// than skipping is what keeps the WebSocket and http.Client from leaking a
+  /// connection per game.
   @override
   void dispose() {
+    _disposeRequested = true;
+    if (hasListeners) return;
     // Cancel before closing: a cancelled subscription never delivers onDone,
     // so normal teardown can't trip the connection-lost banner.
     _sub?.cancel();

@@ -153,6 +153,21 @@ class ApiClient {
     return (body['points'] as num).toInt();
   }
 
+  /// Leave a room. The player is removed for everyone.
+  Future<void> leaveRoom(String code, {required String playerId}) =>
+      _postJson('/rooms/$code/leave', {'player_id': playerId});
+
+  /// Host removes another player from the room.
+  Future<void> kickPlayer(
+    String code, {
+    required String hostId,
+    required String playerId,
+  }) =>
+      _postJson('/rooms/$code/kick', {
+        'host_id': hostId,
+        'player_id': playerId,
+      });
+
   /// Host resets the room back to the lobby for a new round.
   Future<void> resetRoom(String code, {required String hostId}) =>
       _postJson('/rooms/$code/reset', {'host_id': hostId});

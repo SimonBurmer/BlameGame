@@ -97,6 +97,14 @@ sealed class GameEvent {
         return PlayerJoined(
           GamePlayer.fromJson(json['player'] as Map<String, dynamic>),
         );
+      case 'player_left':
+        return PlayerLeft(
+          playerId: json['player_id'] as String,
+          kicked: json['kicked'] as bool? ?? false,
+          players: (json['players'] as List<dynamic>)
+              .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
+              .toList(),
+        );
       case 'round_started':
         return RoundStarted(
           roundIndex: (json['round_index'] as num).toInt(),
@@ -141,6 +149,19 @@ sealed class GameEvent {
 class PlayerJoined extends GameEvent {
   final GamePlayer player;
   const PlayerJoined(this.player);
+}
+
+/// Someone left or was kicked: carries the refreshed roster, since removing a
+/// player can also hand the host role to someone else.
+class PlayerLeft extends GameEvent {
+  final String playerId;
+  final bool kicked;
+  final List<GamePlayer> players;
+  const PlayerLeft({
+    required this.playerId,
+    required this.kicked,
+    required this.players,
+  });
 }
 
 class RoundStarted extends GameEvent {

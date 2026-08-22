@@ -79,6 +79,14 @@ class GameController extends ChangeNotifier {
   /// offer [reconnect]; without it a dropped socket silently freezes the game.
   String? connectionError;
 
+  /// Set once this player is no longer in the room, so screens can pop back
+  /// home. Carries a reason when they were kicked; null when they left of
+  /// their own accord. Check [hasLeftRoom] rather than this for "am I out?".
+  String? removedFromRoom;
+
+  /// True once this player is out of the room, kicked or by choice.
+  bool hasLeftRoom = false;
+
   GameSocket? _socket;
   StreamSubscription<GameEvent>? _sub;
 
@@ -198,6 +206,28 @@ class GameController extends ChangeNotifier {
         if (!_players.any((p) => p.id == player.id)) {
           _players.add(player);
         }
+      case PlayerLeft(:final playerId, :final kicked, :final players):
+        _players
+          ..clear()
+          ..addAll(players);
+        if (playerId == myPlayerId) {
+          // We're the one who's gone: stop listening rather than sit on a feed
+          // for a room we're no longer in.
+          hasLeftRoom = true;
+          removedFromRoom = kicked ? 'The host removed you from the room' : null;
+          _teardownSocket();
+        } else {
+          // Removing a player can hand the host role on, so re-read it from
+          // the fresh roster instead of trusting the join-time value.
+          final s = _session;
+          if (s != null) {
+            _session = GameSession(
+              roomCode: s.roomCode,
+              playerId: s.playerId,
+              isHost: _playerById(s.playerId)?.isHost ?? s.isHost,
+            );
+          }
+        }
       case RoundStarted(:final roundIndex, :final photo, :final roundEndsAt):
         this.roundIndex = roundIndex;
         currentPhoto = photo;
@@ -280,6 +310,26 @@ class GameController extends ChangeNotifier {
     );
     this.roundSeconds = roundSeconds;
   }
+
+  /// Leave the room, removing this player for everyone.
+  ///
+  /// The socket is torn down here rather than waiting for our own
+  /// `player_left` to come back: the server may well close the feed first, and
+  /// that would otherwise surface as a "lost connection" banner on the way out.
+  Future<void> leaveRoom() async {
+    final s = session;
+    hasLeftRoom = true;
+    notifyListeners();
+    try {
+      await api.leaveRoom(s.roomCode, playerId: s.playerId);
+    } finally {
+      await _teardownSocket();
+    }
+  }
+
+  /// Host removes another player from the room.
+  Future<void> kickPlayer(String playerId) =>
+      api.kickPlayer(session.roomCode, hostId: session.playerId, playerId: playerId);
 
   /// Host resets the room back to the lobby so the same group can play again.
   Future<void> resetRoom() =>

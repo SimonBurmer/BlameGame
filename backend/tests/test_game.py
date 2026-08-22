@@ -12,6 +12,7 @@ from app.game import (
     Room,
     GameError,
     add_player,
+    remove_player,
     add_photo,
     start_game,
     submit_guess,
@@ -279,3 +280,149 @@ def test_cannot_reset_while_revealing():
     room.state = RoomState.REVEALING
     with pytest.raises(GameError):
         reset_room(room)
+
+
+# --- leaving / being removed ---------------------------------------------
+
+def test_remove_player_drops_them_from_the_room():
+    room = make_room()
+    add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+
+    remove_player(room, jake.id)
+
+    assert room.player_by_id(jake.id) is None
+    assert [p.name for p in room.players] == ["Emma"]
+
+
+def test_remove_player_takes_their_photos_with_them():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/jake.jpg")
+
+    remove_player(room, jake.id)
+
+    # Nobody can guess a departed player, so their photos can't stay in play.
+    assert [p.owner_id for p in room.photos] == [emma.id]
+
+
+def test_removing_the_host_hands_the_role_on():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    assert emma.is_host is True
+
+    remove_player(room, emma.id)
+
+    # Otherwise the room is left with nobody able to start or reset it.
+    assert jake.is_host is True
+
+
+def test_removing_the_last_player_leaves_an_empty_room():
+    room = make_room()
+    emma = add_player(room, "Emma")
+
+    remove_player(room, emma.id)
+
+    assert room.players == []
+
+
+def test_remove_unknown_player_is_an_error():
+    room = make_room()
+    add_player(room, "Emma")
+    with pytest.raises(GameError):
+        remove_player(room, "nobody")
+
+
+def test_removed_players_guess_stops_blocking_the_round():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
+    assert room.rounds[0].guesses
+
+    remove_player(room, jake.id)
+
+    # A stale guess from someone who left would otherwise sit in the round.
+    assert jake.id not in room.rounds[0].guesses
+
+
+def test_pending_round_is_repointed_off_a_departed_players_photo():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_player(room, "Sam")
+    emma_photo = add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    jake_photo = add_photo(room, owner_id=jake.id, url="/uploads/jake.jpg")
+    start_game(room, total_rounds=2)
+    room.rounds[0].photo = emma_photo
+    room.rounds[1].photo = jake_photo
+
+    remove_player(room, jake.id)
+
+    # Round 1 hasn't been played yet, so it must not show a photo whose owner
+    # is gone -- that round would be unwinnable for everyone.
+    assert room.player_by_id(room.rounds[1].photo.owner_id) is not None
+
+
+def test_already_played_round_keeps_its_photo():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_player(room, "Sam")
+    jake_photo = add_photo(room, owner_id=jake.id, url="/uploads/jake.jpg")
+    add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    start_game(room, total_rounds=2)
+    room.rounds[0].photo = jake_photo
+    advance_round(room)  # round 0 is done and scored
+
+    remove_player(room, jake.id)
+
+    # Rewriting a played round would rewrite history the players already saw.
+    assert room.rounds[0].photo is jake_photo
+
+
+def test_game_finishes_when_too_few_players_remain():
+    room, emma, jake = started_room()
+
+    remove_player(room, jake.id)
+
+    # One player left is not a game; end it rather than run out the clock.
+    assert room.state == RoomState.FINISHED
+
+
+def test_game_finishes_when_the_last_photos_leave():
+    room = make_room()
+    emma = add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+    add_player(room, "Sam")
+    add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/jake.jpg")
+    start_game(room, total_rounds=2)
+
+    remove_player(room, emma.id)
+    remove_player(room, jake.id)
+
+    assert room.state == RoomState.FINISHED
+
+
+def test_removing_in_the_lobby_does_not_finish_the_room():
+    room = make_room()
+    add_player(room, "Emma")
+    jake = add_player(room, "Jake")
+
+    remove_player(room, jake.id)
+
+    assert room.state == RoomState.LOBBY
+
+
+def test_scores_of_remaining_players_survive_a_removal():
+    room, emma, jake = started_room()
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
+    jake_score = jake.score
+    assert jake_score > 0
+
+    remove_player(room, emma.id)
+
+    # Removing someone must not disturb anyone else's running total.
+    assert jake.score == jake_score

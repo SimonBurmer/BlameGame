@@ -28,6 +28,7 @@ from app.game import (
     GameError,
     add_photo,
     add_player,
+    remove_player,
     reset_room,
     start_game,
     submit_guess,
@@ -121,6 +122,15 @@ class GuessBody(BaseModel):
 
 class ResetBody(BaseModel):
     host_id: str
+
+
+class LeaveBody(BaseModel):
+    player_id: str
+
+
+class KickBody(BaseModel):
+    host_id: str
+    player_id: str
 
 
 # --- serialization helpers ----------------------------------------------
@@ -278,6 +288,43 @@ async def guess(code: str, body: GuessBody) -> dict:
         },
     )
     return {"points": points, "correct": points > 0}
+
+
+async def _remove_and_broadcast(room: Room, player_id: str, *, kicked: bool) -> dict:
+    """Drop a player and tell the room. Shared by leaving and being kicked."""
+    try:
+        remove_player(room, player_id)
+    except GameError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # One event for both: clients need the same reaction either way, and
+    # `kicked` lets the removed player's own client say why it was ejected.
+    await manager.broadcast(
+        room.code,
+        {
+            "type": "player_left",
+            "player_id": player_id,
+            "kicked": kicked,
+            "players": [_player_dict(p, room) for p in room.players],
+        },
+    )
+    return _room_dict(room)
+
+
+@app.post("/rooms/{code}/leave")
+async def leave(code: str, body: LeaveBody) -> dict:
+    room = _get_room(code)
+    return await _remove_and_broadcast(room, body.player_id, kicked=False)
+
+
+@app.post("/rooms/{code}/kick")
+async def kick(code: str, body: KickBody) -> dict:
+    room = _get_room(code)
+    host = room.player_by_id(body.host_id)
+    if host is None or not host.is_host:
+        raise HTTPException(status_code=403, detail="only the host can kick")
+    if body.player_id == body.host_id:
+        raise HTTPException(status_code=400, detail="the host cannot kick themselves")
+    return await _remove_and_broadcast(room, body.player_id, kicked=True)
 
 
 @app.post("/rooms/{code}/reset")

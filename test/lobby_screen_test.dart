@@ -81,18 +81,18 @@ void main() {
     expect(find.text('NEED PHOTOS FROM 2+ PLAYERS'), findsNothing);
   });
 
-  testWidgets('the back control is a labelled button, not a bare icon',
+  testWidgets('the leave control is a labelled button, not a bare icon',
       (tester) async {
     final h = await harness();
     await pumpScreen(tester, LobbyScreen(controller: h.controller));
 
-    final backButton = find.byTooltip('Back');
+    final backButton = find.byTooltip('Leave room');
     expect(backButton, findsOneWidget);
     // A bare GestureDetector around an Icon announces nothing to a screen
     // reader and gives a 24x24 target.
     final semantics = tester.getSemantics(backButton);
     expect(semantics.flagsCollection.isButton, isTrue);
-    expect(semantics.tooltip, 'Back');
+    expect(semantics.tooltip, 'Leave room');
     // Material's minimum tap target, supplied by IconButton's padded target.
     expect(semantics.rect.width, greaterThanOrEqualTo(48));
     expect(semantics.rect.height, greaterThanOrEqualTo(48));
@@ -109,5 +109,94 @@ void main() {
 
     expect(find.text('Connection lost'), findsOneWidget);
     expect(find.text('RETRY'), findsOneWidget);
+  });
+
+  testWidgets('leaving posts to the server and pops the lobby', (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    await tester.tap(find.byTooltip('Leave room'));
+    await tester.pumpAndSettle();
+
+    expect(h.http.countEndingWith('/leave'), 1);
+    expect(find.byType(LobbyScreen), findsNothing);
+  });
+
+  testWidgets('the host can remove another player, but not themselves',
+      (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    expect(find.byTooltip('Remove Jake'), findsOneWidget);
+    expect(find.byTooltip('Remove Emma'), findsNothing);
+  });
+
+  testWidgets('a non-host is offered no remove buttons at all', (tester) async {
+    final h = await harness(isHost: false);
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    expect(find.byTooltip('Remove Jake'), findsNothing);
+    expect(find.byTooltip('Remove Emma'), findsNothing);
+  });
+
+  testWidgets('removing a player asks first and then posts', (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    await tester.tap(find.byTooltip('Remove Jake'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove Jake?'), findsOneWidget);
+
+    // Backing out must not remove anyone.
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(h.http.countEndingWith('/kick'), 0);
+
+    await tester.tap(find.byTooltip('Remove Jake'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove'));
+    await tester.pumpAndSettle();
+
+    expect(h.http.countEndingWith('/kick'), 1);
+  });
+
+  testWidgets('being kicked pops the lobby and says why', (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    await h.emit(
+      tester,
+      PlayerLeft(
+        playerId: 'me',
+        kicked: true,
+        players: [player(id: 'p2', name: 'Jake', isHost: true)],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(LobbyScreen), findsNothing);
+    // The reason travels on the controller; the lobby hands it to the
+    // messenger of the route underneath as it pops. Asserting the snackbar
+    // itself needs a route to pop back to, which `pumpScreen` has no room for.
+    expect(h.controller.removedFromRoom, 'The host removed you from the room');
+  });
+
+  testWidgets('another player leaving just updates the roster', (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+    expect(find.text('PLAYERS (2)'), findsOneWidget);
+
+    await h.emit(
+      tester,
+      PlayerLeft(
+        playerId: 'p2',
+        kicked: false,
+        players: [player(id: 'me', name: 'Emma', isHost: true)],
+      ),
+    );
+
+    expect(find.text('PLAYERS (1)'), findsOneWidget);
+    expect(find.text('Jake'), findsNothing);
+    expect(find.byType(LobbyScreen), findsOneWidget);
   });
 }

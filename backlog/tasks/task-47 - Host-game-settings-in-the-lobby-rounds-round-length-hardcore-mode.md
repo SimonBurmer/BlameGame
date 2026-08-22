@@ -1,7 +1,7 @@
 ---
 id: TASK-47
 title: 'Host game settings in the lobby (rounds, round length, hardcore mode)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-22 18:07'
 updated_date: '2026-08-22 22:44'
@@ -49,6 +49,8 @@ Backend: new game.set_settings() holds the rule - a hardcore CHANGE is refused o
 Frontend: SettingsUpdated event in the sealed hierarchy; ApiClient.updateSettings sends only changed fields; startGame() defaults to room settings instead of 5/10. Lobby panel gives the host steppers (rounds 1-20, seconds 5-60) plus the hardcore switch; non-hosts see the same values read-only. The switch disables with 'Locked - photos have already been added' once anyone uploads.
 
 Backend 125 -> 133, Flutter 83 -> 86. Verified independently by the orchestrator on the branch: 133 backend passed, 86 flutter passed, analyze clean, and the server-side lock reviewed by hand.
+
+Settings ride a new settings_updated broadcast rather than the room snapshot - there was no snapshot event to reuse, only the REST GET. POST /rooms/{code}/start now defaults to the room's configured settings.
 
 Known minor: the stepper posts one request per tap, so holding '+' fires a request each time. Fine at this scale; debounce in _setSetting if it ever matters. PR: https://github.com/SimonBurmer/BlameGame/pull/39
 <!-- SECTION:NOTES:END -->

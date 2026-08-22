@@ -6,6 +6,7 @@ import '../services/photo_sampler.dart';
 import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
 import '../ui/connection_banner.dart';
+import '../ui/error_text.dart';
 import '../ui/player_cosmetics.dart';
 import 'game_screen.dart';
 
@@ -120,9 +121,28 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   Future<void> _start() async {
     try {
-      await c.startGame(totalRounds: 5, roundSeconds: 10);
+      await c.startGame();
     } catch (e) {
       _snack('Could not start: $e');
+    }
+  }
+
+  /// Push one setting change. The server answers with a `settings_updated`
+  /// broadcast, which is what actually moves local state — so a rejected
+  /// change (a hardcore flip after photos landed) simply doesn't take.
+  Future<void> _setSetting({
+    int? totalRounds,
+    int? roundSeconds,
+    bool? hardcore,
+  }) async {
+    try {
+      await c.updateSettings(
+        totalRounds: totalRounds,
+        roundSeconds: roundSeconds,
+        hardcore: hardcore,
+      );
+    } catch (e) {
+      _snack(friendlyError(e));
     }
   }
 
@@ -244,6 +264,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   itemBuilder: (context, i) => _playerTile(c.players[i]),
                 ),
               ),
+              _settingsPanel(),
               _bottomControls(),
             ],
           ),
@@ -418,6 +439,116 @@ class _LobbyScreenState extends State<LobbyScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Game settings. The host edits them; everyone else reads them, so nobody
+  /// is surprised by how long the game is or how photos are shared.
+  ///
+  /// Hardcore is only editable while the room has no photos at all: after that
+  /// the switch is disabled and says why. The server enforces the same lock,
+  /// so this is convenience, not the guarantee.
+  Widget _settingsPanel() {
+    final colors = context.colors;
+    final locked = c.anyPhotosUploaded;
+    final hardcore = c.hardcore ?? false;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          _settingRow(
+            'Rounds',
+            '${c.totalRounds}',
+            onLess: c.totalRounds > 1
+                ? () => _setSetting(totalRounds: c.totalRounds - 1)
+                : null,
+            onMore: c.totalRounds < 20
+                ? () => _setSetting(totalRounds: c.totalRounds + 1)
+                : null,
+          ),
+          _settingRow(
+            'Seconds per round',
+            '${c.roundSeconds}',
+            onLess: c.roundSeconds > 5
+                ? () => _setSetting(roundSeconds: c.roundSeconds - 5)
+                : null,
+            onMore: c.roundSeconds < 60
+                ? () => _setSetting(roundSeconds: c.roundSeconds + 5)
+                : null,
+          ),
+          if (c.isHost)
+            SwitchListTile.adaptive(
+              value: hardcore,
+              onChanged:
+                  locked ? null : (v) => _setSetting(hardcore: v),
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: colors.brand,
+              title: Text(
+                'Hardcore mode',
+                style: TextStyle(
+                  color: colors.onSurfaceStrong,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                locked
+                    ? 'Locked — photos have already been added to this room.'
+                    : "Everyone's photos are shared without a preview or "
+                        'reshuffle. Locks once the first photo is added.',
+                style: TextStyle(color: colors.onSurfaceMuted, fontSize: 12),
+              ),
+            )
+          else
+            _settingRow('Hardcore mode', hardcore ? 'ON' : 'OFF'),
+        ],
+      ),
+    );
+  }
+
+  /// One setting line. Read-only unless a stepper callback is supplied, and
+  /// only the host gets those.
+  Widget _settingRow(
+    String label,
+    String value, {
+    VoidCallback? onLess,
+    VoidCallback? onMore,
+  }) {
+    final colors = context.colors;
+    final stepper = c.isHost && (onLess != null || onMore != null);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: colors.onSurfaceStrong, fontSize: 15),
+          ),
+        ),
+        if (stepper)
+          IconButton(
+            onPressed: onLess,
+            tooltip: 'Fewer $label',
+            icon: Icon(Icons.remove_circle_outline, color: colors.onSurfaceMuted),
+          ),
+        Text(
+          value,
+          style: TextStyle(
+            color: colors.brand,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (stepper)
+          IconButton(
+            onPressed: onMore,
+            tooltip: 'More $label',
+            icon: Icon(Icons.add_circle_outline, color: colors.onSurfaceMuted),
+          ),
+      ],
     );
   }
 

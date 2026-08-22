@@ -31,6 +31,7 @@ from app.game import (
     add_player,
     remove_player,
     reset_room,
+    set_settings,
     start_game,
     submit_guess,
 )
@@ -121,8 +122,19 @@ app.add_middleware(
 # --- request bodies ------------------------------------------------------
 
 class CreateRoomBody(BaseModel):
-    # Set at creation and immutable thereafter; see Room.hardcore.
+    # Optional starting value; the host sets the mode in the lobby now, and
+    # the client no longer sends this.
     hardcore: bool = False
+
+
+class SettingsBody(BaseModel):
+    host_id: str
+    # All optional so a client can change one setting without restating the
+    # rest. Bounds match StartBody: these are HTTP inputs, so out-of-range is a
+    # 422 at the boundary rather than a game rule.
+    total_rounds: Optional[int] = Field(default=None, ge=1, le=50)
+    round_seconds: Optional[int] = Field(default=None, ge=1, le=120)
+    hardcore: Optional[bool] = None
 
 
 class JoinBody(BaseModel):
@@ -132,9 +144,10 @@ class JoinBody(BaseModel):
 class StartBody(BaseModel):
     host_id: str
     # Bounded here rather than in game.py: these are HTTP inputs, so an
-    # out-of-range value is a 422 at the boundary, not a game rule.
-    total_rounds: int = Field(default=5, ge=1, le=50)
-    round_seconds: int = Field(default=10, ge=1, le=120)
+    # out-of-range value is a 422 at the boundary, not a game rule. Omitted
+    # means "use what the host configured in the lobby".
+    total_rounds: Optional[int] = Field(default=None, ge=1, le=50)
+    round_seconds: Optional[int] = Field(default=None, ge=1, le=120)
 
 
 class GuessBody(BaseModel):
@@ -178,7 +191,9 @@ def _room_dict(room: Room) -> dict:
         "code": room.code,
         "state": room.state.value,
         "current_round": room.current_round,
-        "total_rounds": len(room.rounds),
+        # Before the game starts there are no rounds yet, so report the host's
+        # configured length; once it is running the built rounds are the truth.
+        "total_rounds": len(room.rounds) or room.total_rounds,
         "round_seconds": room.round_seconds,
         "hardcore": room.hardcore,
         "players": [_player_dict(p, room) for p in room.players],
@@ -276,6 +291,35 @@ def get_room(code: str) -> dict:
     return _room_dict(_get_room(code))
 
 
+@app.post("/rooms/{code}/settings")
+async def update_settings(code: str, body: SettingsBody) -> dict:
+    room = _get_room(code)
+    host = room.player_by_id(body.host_id)
+    if host is None or not host.is_host:
+        raise HTTPException(status_code=403, detail="only the host can change settings")
+    try:
+        set_settings(
+            room,
+            total_rounds=body.total_rounds,
+            round_seconds=body.round_seconds,
+            hardcore=body.hardcore,
+        )
+    except GameError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # Non-hosts need to see what they are about to play, so the whole room gets
+    # the new settings rather than only the host's own screen.
+    await manager.broadcast(
+        room.code,
+        {
+            "type": "settings_updated",
+            "total_rounds": room.total_rounds,
+            "round_seconds": room.round_seconds,
+            "hardcore": room.hardcore,
+        },
+    )
+    return _room_dict(room)
+
+
 @app.post("/rooms/{code}/start")
 async def start(code: str, body: StartBody) -> dict:
     room = _get_room(code)
@@ -283,7 +327,15 @@ async def start(code: str, body: StartBody) -> dict:
     if host is None or not host.is_host:
         raise HTTPException(status_code=403, detail="only the host can start")
     try:
-        start_game(room, total_rounds=body.total_rounds, round_seconds=body.round_seconds)
+        start_game(
+            room,
+            total_rounds=body.total_rounds
+            if body.total_rounds is not None
+            else room.total_rounds,
+            round_seconds=body.round_seconds
+            if body.round_seconds is not None
+            else room.round_seconds,
+        )
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

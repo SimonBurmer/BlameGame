@@ -61,11 +61,10 @@ class ApiClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
-  /// Create a new room; returns its join code. In hardcore mode photos are
-  /// uploaded blind, with no preview or reshuffle. The mode is fixed at
-  /// creation — see the note on the server's Room.hardcore.
-  Future<String> createRoom({bool hardcore = false}) async =>
-      (await _postJson('/rooms', {'hardcore': hardcore}))['code'] as String;
+  /// Create a new room; returns its join code. Game settings (rounds, round
+  /// length, hardcore mode) are set afterwards from the lobby.
+  Future<String> createRoom() async =>
+      (await _postJson('/rooms'))['code'] as String;
 
   /// Join a room by code; returns (playerId, isHost).
   Future<({String playerId, bool isHost})> joinRoom(
@@ -115,8 +114,14 @@ class ApiClient {
     return _decode(resp)['url'] as String;
   }
 
-  /// Fetch the current room snapshot (players, round length, photo mode).
-  Future<({List<GamePlayer> players, int roundSeconds, bool hardcore})> getRoom(
+  /// Fetch the current room snapshot (players, settings, photo mode).
+  Future<
+      ({
+        List<GamePlayer> players,
+        int totalRounds,
+        int roundSeconds,
+        bool hardcore
+      })> getRoom(
     String code,
   ) async {
     final resp = await _http.get(_uri('/rooms/$code')).timeout(_timeout);
@@ -126,11 +131,32 @@ class ApiClient {
         .toList();
     return (
       players: players,
+      totalRounds: (body['total_rounds'] as num?)?.toInt() ?? 5,
       roundSeconds: (body['round_seconds'] as num).toInt(),
       // Absent only when talking to a server older than hardcore mode, where
       // every room is normal. Defaulting the other way would upload blind.
       hardcore: body['hardcore'] as bool? ?? false,
     );
+  }
+
+  /// Host updates the lobby game settings. Only the fields passed are changed.
+  ///
+  /// The server rejects a hardcore change once the room has photos — that lock
+  /// is its call, not this client's.
+  Future<void> updateSettings(
+    String code, {
+    required String hostId,
+    int? totalRounds,
+    int? roundSeconds,
+    bool? hardcore,
+  }) async {
+    // Null means "leave this one alone", so unset fields are dropped rather
+    // than sent as null (which the server would read as an explicit value).
+    final body = <String, dynamic>{'host_id': hostId};
+    if (totalRounds != null) body['total_rounds'] = totalRounds;
+    if (roundSeconds != null) body['round_seconds'] = roundSeconds;
+    if (hardcore != null) body['hardcore'] = hardcore;
+    await _postJson('/rooms/$code/settings', body);
   }
 
   /// Host starts the game.

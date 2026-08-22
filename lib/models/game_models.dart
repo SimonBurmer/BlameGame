@@ -134,6 +134,12 @@ sealed class GameEvent {
               .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
               .toList(),
         );
+      case 'settings_updated':
+        return SettingsUpdated(
+          totalRounds: (json['total_rounds'] as num).toInt(),
+          roundSeconds: (json['round_seconds'] as num).toInt(),
+          hardcore: json['hardcore'] as bool,
+        );
       case 'room_reset':
         return RoomReset(
           (json['players'] as List<dynamic>)
@@ -204,6 +210,19 @@ class GameFinished extends GameEvent {
 class PhotosUpdated extends GameEvent {
   final List<GamePlayer> players;
   const PhotosUpdated(this.players);
+}
+
+/// The host changed the game settings in the lobby. Broadcast to everyone, so
+/// non-hosts see what they are about to play.
+class SettingsUpdated extends GameEvent {
+  final int totalRounds;
+  final int roundSeconds;
+  final bool hardcore;
+  const SettingsUpdated({
+    required this.totalRounds,
+    required this.roundSeconds,
+    required this.hardcore,
+  });
 }
 
 class RoomReset extends GameEvent {

@@ -78,6 +78,30 @@ def test_create_room_returns_code(client):
     assert len(code) == 5
 
 
+def test_create_room_defaults_to_normal_mode(client):
+    # No body at all still works, and is not hardcore.
+    assert client.post("/rooms").json()["hardcore"] is False
+    code = client.post("/rooms", json={}).json()["code"]
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is False
+
+
+def test_create_hardcore_room_reports_mode_in_snapshot(client):
+    # Every client learns the mode from the snapshot, not from local state.
+    code = client.post("/rooms", json={"hardcore": True}).json()["code"]
+    _join(client, code, "Emma")
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is True
+
+
+def test_hardcore_mode_is_not_mutable_after_creation(client):
+    # Starting the game must not be able to flip the mode: photos are already
+    # uploaded by then, so a late toggle would retroactively break the promise.
+    code = client.post("/rooms", json={"hardcore": False}).json()["code"]
+    host = _join(client, code, "Emma")
+    _join(client, code, "Liam")
+    client.post(f"/rooms/{code}/start", json={"host_id": host, "hardcore": True})
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is False
+
+
 def test_join_room(client):
     code = client.post("/rooms").json()["code"]
     resp = client.post(f"/rooms/{code}/join", json={"name": "Emma"})

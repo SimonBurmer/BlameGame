@@ -4,7 +4,7 @@ title: Fix photo content-type handling (stop forcing .jpg)
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-22 10:42'
 labels:
   - frontend
   - backend
@@ -28,3 +28,9 @@ Backend always writes uploads as .jpg regardless of real format (main.py), and t
 - [ ] #2 Server stores files with the correct extension/type
 - [ ] #3 PNG/HEIC and other common formats round-trip correctly
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Still open, but partially mitigated: upload now verifies JPEG/PNG magic bytes instead of trusting the client's content-type header. Files are still always written with a .jpg extension regardless of actual type, which is the substance of this ticket.
+<!-- SECTION:NOTES:END -->

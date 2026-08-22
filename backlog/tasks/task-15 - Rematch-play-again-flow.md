@@ -4,14 +4,14 @@ title: Rematch / play-again flow
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-18 14:43'
+updated_date: '2026-08-22 18:04'
 labels:
   - frontend
   - backend
   - gameplay
 milestone: m-3
 dependencies: []
-priority: medium
+priority: high
 ordinal: 15000
 ---
 

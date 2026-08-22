@@ -4,13 +4,14 @@ title: 'Hardcore mode: upload the sampled photos blind, no preview'
 status: To Do
 assignee: []
 created_date: '2026-08-22 13:37'
-updated_date: '2026-08-22 13:47'
+updated_date: '2026-08-22 18:05'
 labels:
   - frontend
   - backend
   - gameplay
 dependencies:
   - TASK-42
+priority: high
 ordinal: 43000
 ---
 

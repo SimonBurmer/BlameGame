@@ -7,9 +7,11 @@ keeps every rule fast and easy to unit-test.
 
 from __future__ import annotations
 
+import math
 import random
+import time
 import uuid
-from typing import List
+from typing import List, Optional
 
 from app.models import Photo, Player, Room, RoomState, Round
 from app.scoring import points_for_guess
@@ -23,10 +25,18 @@ __all__ = [
     "start_game",
     "current_photo",
     "submit_guess",
+    "seconds_left_in_round",
+    "everyone_has_guessed",
     "advance_round",
     "rankings",
     "reset_room",
 ]
+
+
+# A party game, not a stadium: caps keep one client from filling the room,
+# the photo pool, or the disk.
+MAX_PLAYERS = 12
+MAX_PHOTOS_PER_PLAYER = 10
 
 
 class GameError(Exception):
@@ -41,6 +51,8 @@ def add_player(room: Room, name: str) -> Player:
     """Add a player to a room. First player becomes host. Names are unique."""
     if room.state != RoomState.LOBBY:
         raise GameError("cannot join a game that has already started")
+    if len(room.players) >= MAX_PLAYERS:
+        raise GameError(f"room is full (max {MAX_PLAYERS} players)")
     if room.player_by_name(name) is not None:
         raise GameError(f"name '{name}' is already taken in this room")
     player = Player(
@@ -56,6 +68,11 @@ def add_photo(room: Room, *, owner_id: str, url: str) -> Photo:
     """Register an uploaded photo for a player."""
     if room.player_by_id(owner_id) is None:
         raise GameError("photo owner is not a player in this room")
+    if room.state != RoomState.LOBBY:
+        raise GameError("photos can only be added before the game starts")
+    owned = sum(1 for p in room.photos if p.owner_id == owner_id)
+    if owned >= MAX_PHOTOS_PER_PLAYER:
+        raise GameError(f"at most {MAX_PHOTOS_PER_PLAYER} photos per player")
     photo = Photo(id=_new_id(), owner_id=owner_id, url=url)
     room.photos.append(photo)
     return photo
@@ -67,9 +84,11 @@ def start_game(room: Room, *, total_rounds: int = 5, round_seconds: int = 10) ->
         raise GameError("game has already started")
     if len(room.players) < 2:
         raise GameError("need at least 2 players to start")
-    if len(room.photos) < 1:
-        raise GameError("need at least 1 photo to start")
-
+    # Photos from at least two people, otherwise every round shows the same
+    # player's pictures: they recognise all of them and win by default while
+    # everyone else can only guess that one name.
+    if len({p.owner_id for p in room.photos}) < 2:
+        raise GameError("need photos from at least 2 players to start")
     pool = list(room.photos)
     random.shuffle(pool)
     # Cycle through the shuffled photos if there are fewer photos than rounds.
@@ -88,14 +107,34 @@ def current_photo(room: Room) -> Photo:
     return room.rounds[room.current_round].photo
 
 
+def seconds_left_in_round(room: Room, rnd: Round, now: Optional[float] = None) -> int:
+    """Seconds remaining in `rnd`, measured against the server's own clock.
+
+    Falls back to the full round length when no deadline has been recorded
+    (a round that was never driven by the RoundDriver, as in unit tests).
+    """
+    if rnd.ends_at is None:
+        return room.round_seconds
+    now = time.time() if now is None else now
+    remaining = math.ceil(rnd.ends_at - now)
+    return max(0, min(room.round_seconds, remaining))
+
+
 def submit_guess(
     room: Room,
     *,
     guesser_id: str,
     guessed_owner_id: str,
-    seconds_left: int,
+    round_index: Optional[int] = None,
+    now: Optional[float] = None,
 ) -> int:
-    """Record a guess, award points, and return the points earned."""
+    """Record a guess, award points, and return the points earned.
+
+    `round_index` is the round the guesser believed they were answering. A
+    guess still in flight when the round rolls over would otherwise be
+    recorded against the next round -- scoring it against a photo the player
+    never saw and consuming the guess slot they need for the new round.
+    """
     if room.state != RoomState.IN_ROUND:
         raise GameError("guesses are only allowed during a round")
 
@@ -103,15 +142,28 @@ def submit_guess(
     if guesser is None:
         raise GameError("guesser is not a player in this room")
 
+    if round_index is not None and round_index != room.current_round:
+        raise GameError("that round has already ended")
+
     this_round = room.rounds[room.current_round]
     if guesser_id in this_round.guesses:
         raise GameError("player has already guessed this round")
     this_round.guesses[guesser_id] = guessed_owner_id
 
     correct = guessed_owner_id == this_round.photo.owner_id
-    points = points_for_guess(correct=correct, seconds_left=seconds_left)
+    points = points_for_guess(
+        correct=correct,
+        seconds_left=seconds_left_in_round(room, this_round, now),
+    )
     guesser.score += points
     return points
+
+
+def everyone_has_guessed(room: Room) -> bool:
+    """True once every player has guessed the current round."""
+    if not room.rounds:
+        return False
+    return len(room.rounds[room.current_round].guesses) >= len(room.players)
 
 
 def advance_round(room: Room) -> None:

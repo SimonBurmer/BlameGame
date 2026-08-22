@@ -7,7 +7,7 @@ them first forces us to design a clean, testable game API.
 
 import pytest
 
-from app.models import Photo, RoomState
+from app.models import RoomState
 from app.game import (
     Room,
     GameError,
@@ -75,6 +75,18 @@ def test_start_requires_at_least_one_photo():
         start_game(room, total_rounds=3)
 
 
+def test_start_requires_photos_from_two_different_players():
+    # One player's photos would mean every round shows their pictures: they
+    # recognise all of them and everyone else can only guess that one name.
+    room = make_room()
+    emma = add_player(room, "Emma")
+    add_player(room, "Jake")
+    add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    add_photo(room, owner_id=emma.id, url="/uploads/2.jpg")
+    with pytest.raises(GameError):
+        start_game(room, total_rounds=3)
+
+
 def test_start_builds_rounds_and_enters_in_round():
     room = make_room()
     emma = add_player(room, "Emma")
@@ -90,8 +102,9 @@ def test_start_builds_rounds_and_enters_in_round():
 def test_start_stores_round_seconds_on_the_room():
     room = make_room()
     emma = add_player(room, "Emma")
-    add_player(room, "Jake")
+    jake = add_player(room, "Jake")
     add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/2.jpg")
     start_game(room, total_rounds=1, round_seconds=15)
     assert room.round_seconds == 15
 
@@ -101,6 +114,7 @@ def test_cannot_start_twice():
     emma = add_player(room, "Emma")
     jake = add_player(room, "Jake")
     add_photo(room, owner_id=emma.id, url="/uploads/1.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/2.jpg")
     start_game(room, total_rounds=1)
     with pytest.raises(GameError):
         start_game(room, total_rounds=1)
@@ -108,44 +122,53 @@ def test_cannot_start_twice():
 
 # --- guessing + scoring --------------------------------------------------
 
-def started_room():
+# Fixed clock so scoring is deterministic: the server derives seconds_left
+# from the round deadline rather than trusting a client-supplied number.
+NOW = 1_000_000.0
+
+
+def started_room(seconds_left: int = 8):
     """A room mid-game with a known current photo owned by Emma."""
     room = make_room()
     emma = add_player(room, "Emma")
     jake = add_player(room, "Jake")
-    # Only Emma has a photo, so the current photo's owner is deterministic.
-    add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    emma_photo = add_photo(room, owner_id=emma.id, url="/uploads/emma.jpg")
+    add_photo(room, owner_id=jake.id, url="/uploads/jake.jpg")
     start_game(room, total_rounds=1)
+    # start_game shuffles the pool, so pin the round to Emma's photo to keep
+    # the expected owner deterministic.
+    room.rounds[0].photo = emma_photo
+    room.rounds[0].ends_at = NOW + seconds_left
     return room, emma, jake
 
 
 def test_correct_guess_awards_points():
     room, emma, jake = started_room()
     # Jake correctly guesses Emma with 8 seconds left.
-    points = submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    points = submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
     assert points == 800
     assert room.player_by_id(jake.id).score == 800
 
 
 def test_wrong_guess_awards_nothing():
     room, emma, jake = started_room()
-    points = submit_guess(room, guesser_id=jake.id, guessed_owner_id=jake.id, seconds_left=8)
+    points = submit_guess(room, guesser_id=jake.id, guessed_owner_id=jake.id, now=NOW)
     assert points == 0
     assert room.player_by_id(jake.id).score == 0
 
 
 def test_player_cannot_guess_twice_in_a_round():
     room, emma, jake = started_room()
-    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
     with pytest.raises(GameError):
-        submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=5)
+        submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
 
 
 def test_guess_only_allowed_during_a_round():
     room, emma, jake = started_room()
     room.state = RoomState.REVEALING
     with pytest.raises(GameError):
-        submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+        submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
 
 
 def test_current_photo_matches_first_round():
@@ -175,7 +198,7 @@ def test_advance_past_last_round_finishes_game():
 
 def test_rankings_sorted_by_score_desc():
     room, emma, jake = started_room()
-    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)  # jake 800
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)  # jake 800
     ranked = rankings(room)
     assert [p.name for p in ranked] == ["Jake", "Emma"]
     assert ranked[0].score == 800
@@ -197,7 +220,7 @@ def test_reset_returns_finished_room_to_lobby():
 
 def test_reset_keeps_players_and_code():
     room, emma, jake = started_room()
-    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
     advance_round(room)
 
     reset_room(room)
@@ -208,7 +231,7 @@ def test_reset_keeps_players_and_code():
 
 def test_reset_carries_scores_over_to_the_next_round():
     room, emma, jake = started_room()
-    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, seconds_left=8)
+    submit_guess(room, guesser_id=jake.id, guessed_owner_id=emma.id, now=NOW)
     advance_round(room)
 
     reset_room(room)
@@ -222,7 +245,9 @@ def test_reset_keeps_photos_for_the_next_round():
 
     reset_room(room)
 
-    assert len(room.photos) == 1
+    # Both players' photos survive, so the group can play again without
+    # re-uploading.
+    assert len(room.photos) == 2
 
 
 def test_reset_keeps_host():

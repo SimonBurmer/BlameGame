@@ -12,25 +12,22 @@ so run only ONE instance.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
-import time
 import uuid
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.connection import manager
 from app.game import (
     GameError,
     add_photo,
     add_player,
-    advance_round,
-    current_photo,
-    rankings,
     reset_room,
     start_game,
     submit_guess,
@@ -42,10 +39,49 @@ from app.timer import RoundDriver
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "uploads"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# room code -> the RoundDriver currently timing that room's rounds, so
-# POST /guess can wake it early once everyone has guessed. Populated by
-# start(), removed once the driver's run() completes.
-_drivers: dict[str, RoundDriver] = {}
+# Uploads are full-resolution camera-roll originals, so the cap is generous;
+# without one, a single request reads unbounded bytes into memory.
+MAX_PHOTO_BYTES = 8 * 1024 * 1024
+_UPLOAD_CHUNK = 64 * 1024
+
+# Background tasks are kept referenced: asyncio only holds a weak reference, so
+# an unreferenced task can be garbage-collected mid-flight, and a task that
+# raises otherwise fails silently.
+_background_tasks: set[asyncio.Task] = set()
+
+logger = logging.getLogger(__name__)
+
+
+def _spawn(coro) -> None:
+    task = asyncio.ensure_future(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    task.add_done_callback(_log_task_failure)
+
+
+def _log_task_failure(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("background task failed", exc_info=exc)
+
+
+async def _read_capped(file: UploadFile) -> bytes:
+    """Read an upload, refusing anything over MAX_PHOTO_BYTES."""
+    chunks: list[bytes] = []
+    total = 0
+    while chunk := await file.read(_UPLOAD_CHUNK):
+        total += len(chunk)
+        if total > MAX_PHOTO_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"file too large (max {MAX_PHOTO_BYTES // (1024 * 1024)} MB)",
+            )
+        chunks.append(chunk)
+    if not chunks:
+        raise HTTPException(status_code=400, detail="empty file")
+    return b"".join(chunks)
 
 app = FastAPI(title="PhotoRoulette API")
 
@@ -53,7 +89,9 @@ app = FastAPI(title="PhotoRoulette API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # No cookies or Authorization headers are used, and "*" + credentials
+    # makes Starlette reflect any requesting origin.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -62,19 +100,23 @@ app.add_middleware(
 # --- request bodies ------------------------------------------------------
 
 class JoinBody(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=24)
 
 
 class StartBody(BaseModel):
     host_id: str
-    total_rounds: int = 5
-    round_seconds: int = 10
+    # Bounded here rather than in game.py: these are HTTP inputs, so an
+    # out-of-range value is a 422 at the boundary, not a game rule.
+    total_rounds: int = Field(default=5, ge=1, le=50)
+    round_seconds: int = Field(default=10, ge=1, le=120)
 
 
 class GuessBody(BaseModel):
     guesser_id: str
     guessed_owner_id: str
-    seconds_left: int
+    # The round the client believed it was answering. Optional so an older
+    # client still works; when present it guards the round-rollover race.
+    round_index: Optional[int] = None
 
 
 class ResetBody(BaseModel):
@@ -83,8 +125,13 @@ class ResetBody(BaseModel):
 
 # --- serialization helpers ----------------------------------------------
 
-def _player_dict(p: Player) -> dict:
-    return {"id": p.id, "name": p.name, "score": p.score, "is_host": p.is_host}
+def _player_dict(p: Player, room: Room | None = None) -> dict:
+    d = {"id": p.id, "name": p.name, "score": p.score, "is_host": p.is_host}
+    if room is not None:
+        # Lets the lobby show who has actually contributed photos, instead of
+        # a decorative tick that always reads "ready".
+        d["photo_count"] = sum(1 for photo in room.photos if photo.owner_id == p.id)
+    return d
 
 
 def _photo_dict(photo: Photo) -> dict:
@@ -98,7 +145,7 @@ def _room_dict(room: Room) -> dict:
         "current_round": room.current_round,
         "total_rounds": len(room.rounds),
         "round_seconds": room.round_seconds,
-        "players": [_player_dict(p) for p in room.players],
+        "players": [_player_dict(p, room) for p in room.players],
     }
 
 
@@ -125,7 +172,7 @@ async def join_room(code: str, body: JoinBody) -> dict:
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))
     await manager.broadcast(
-        room.code, {"type": "player_joined", "player": _player_dict(player)}
+        room.code, {"type": "player_joined", "player": _player_dict(player, room)}
     )
     return {"player_id": player.id, "is_host": player.is_host}
 
@@ -140,25 +187,43 @@ async def upload_photo(
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(status_code=400, detail="file must be an image")
 
-    room_dir = UPLOAD_DIR / room.code
-    room_dir.mkdir(parents=True, exist_ok=True)
-    photo_id = uuid.uuid4().hex[:12]
-    dest = room_dir / f"{photo_id}.jpg"
-    dest.write_bytes(await file.read())
+    data = await _read_capped(file)
+    # Trust the bytes, not the client's content-type header.
+    if not data.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
+        raise HTTPException(status_code=400, detail="file must be a JPEG or PNG")
 
+    # Register the photo before writing it, so a rejected upload never leaves
+    # an orphan file on disk.
+    photo_id = uuid.uuid4().hex[:12]
     url = f"/rooms/{room.code}/photos/{photo_id}.jpg"
     try:
         photo = add_photo(room, owner_id=owner_id, url=url)
     except GameError as e:
-        dest.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=str(e))
+
+    room_dir = UPLOAD_DIR / room.code
+    room_dir.mkdir(parents=True, exist_ok=True)
+    (room_dir / f"{photo_id}.jpg").write_bytes(data)
+
+    # Tell the lobby who is ready, so the host isn't guessing.
+    await manager.broadcast(
+        room.code,
+        {
+            "type": "photos_updated",
+            "players": [_player_dict(p, room) for p in room.players],
+        },
+    )
     return {"photo_id": photo.id, "url": photo.url}
 
 
 @app.get("/rooms/{code}/photos/{filename}")
 def get_photo(code: str, filename: str) -> FileResponse:
-    path = UPLOAD_DIR / code / filename
-    if not path.exists():
+    # `code` and `filename` are raw path params, so resolve the candidate and
+    # confirm it stays inside UPLOAD_DIR: without this, `/rooms/../photos/x`
+    # escapes the upload tree and serves arbitrary files from the working dir.
+    base = UPLOAD_DIR.resolve()
+    path = (base / code / filename).resolve()
+    if not path.is_relative_to(base) or not path.is_file():
         raise HTTPException(status_code=404, detail="photo not found")
     return FileResponse(path)
 
@@ -182,21 +247,11 @@ async def start(code: str, body: StartBody) -> dict:
     # The driver owns round timing: it broadcasts round_started, waits, reveals,
     # advances, and finishes — all over the WebSocket. Each sync on_event
     # schedules an async broadcast on the running loop.
-    loop = asyncio.get_running_loop()
-
     def emit(event: dict) -> None:
-        loop.create_task(manager.broadcast(room.code, event))
+        _spawn(manager.broadcast(room.code, event))
 
     driver = RoundDriver(room, on_event=emit)
-    _drivers[room.code] = driver
-
-    async def run_and_cleanup() -> None:
-        try:
-            await driver.run()
-        finally:
-            _drivers.pop(room.code, None)
-
-    asyncio.create_task(run_and_cleanup())
+    _spawn(driver.run())
 
     return _room_dict(room)
 
@@ -209,7 +264,7 @@ async def guess(code: str, body: GuessBody) -> dict:
             room,
             guesser_id=body.guesser_id,
             guessed_owner_id=body.guessed_owner_id,
-            seconds_left=body.seconds_left,
+            round_index=body.round_index,
         )
     except GameError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -222,34 +277,7 @@ async def guess(code: str, body: GuessBody) -> dict:
             "correct": points > 0,
         },
     )
-
-    this_round = room.rounds[room.current_round]
-    if len(this_round.guesses) >= len(room.players):
-        driver = _drivers.get(room.code)
-        if driver is not None:
-            driver.signal_early_end(room.current_round)
-
     return {"points": points, "correct": points > 0}
-
-
-@app.post("/rooms/{code}/advance")
-async def advance(code: str) -> dict:
-    room = _get_room(code)
-    try:
-        advance_round(room)
-    except GameError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if room.state.value == "finished":
-        await manager.broadcast(
-            room.code,
-            {
-                "type": "game_finished",
-                "rankings": [_player_dict(p) for p in rankings(room)],
-            },
-        )
-    else:
-        await _broadcast_round_started(room)
-    return _room_dict(room)
 
 
 @app.post("/rooms/{code}/reset")
@@ -264,22 +292,12 @@ async def reset(code: str, body: ResetBody) -> dict:
         raise HTTPException(status_code=400, detail=str(e))
     await manager.broadcast(
         room.code,
-        {"type": "room_reset", "players": [_player_dict(p) for p in room.players]},
-    )
-    return _room_dict(room)
-
-
-async def _broadcast_round_started(room: Room) -> None:
-    round_ends_at = int((time.time() + room.round_seconds) * 1000)
-    await manager.broadcast(
-        room.code,
         {
-            "type": "round_started",
-            "round_index": room.current_round,
-            "photo": _photo_dict(current_photo(room)),
-            "round_ends_at": round_ends_at,
+            "type": "room_reset",
+            "players": [_player_dict(p, room) for p in room.players],
         },
     )
+    return _room_dict(room)
 
 
 # --- WebSocket -----------------------------------------------------------
@@ -287,12 +305,22 @@ async def _broadcast_round_started(room: Room) -> None:
 @app.websocket("/ws/{code}/{player_id}")
 async def game_socket(websocket: WebSocket, code: str, player_id: str) -> None:
     try:
-        store.get_room(code)
+        room = store.get_room(code)
     except RoomNotFound:
         await websocket.close(code=4004)
         return
 
-    await manager.connect(code, websocket)
+    # Only players of this room get the feed: the stream carries every photo
+    # URL in the game.
+    if room.player_by_id(player_id) is None:
+        await websocket.close(code=4003)
+        return
+
+    # Register under the room's canonical code. The path param is whatever the
+    # client typed, and broadcasts target room.code -- registering under a
+    # lowercase code produced a socket that connected fine and then silently
+    # received nothing, forever.
+    await manager.connect(room.code, websocket)
     try:
         while True:
             # We don't require inbound messages; keep the socket open so the
@@ -300,7 +328,11 @@ async def game_socket(websocket: WebSocket, code: str, player_id: str) -> None:
             # client sends or disconnects.
             await websocket.receive_text()
     except WebSocketDisconnect:
-        manager.disconnect(code, websocket)
+        pass
+    finally:
+        # finally, not just the disconnect branch: server shutdown or a
+        # cancellation would otherwise leak the socket in the room registry.
+        manager.disconnect(room.code, websocket)
 
 
 @app.get("/health")

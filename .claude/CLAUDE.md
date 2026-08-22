@@ -13,12 +13,15 @@ awarded for correct + fast guesses; rounds tally into a final leaderboard.
 ## Architecture
 
 ### Flutter (`lib/`)
-Layered: `config → models → services → state → screens`.
+Layered: `config → models → services → state → screens`, with `theme/` and
+`ui/` holding presentation shared across screens.
 - `config.dart` — `apiBase` from `String.fromEnvironment('API_BASE', default 'http://localhost:8000')`; `wsBase` derived by swapping `http`→`ws`. Production URL is passed via `--dart-define=API_BASE=<url>`.
-- `models/game_models.dart` — `GamePlayer`, `PhotoInfo`, and a sealed `GameEvent` hierarchy (deserialize-only).
+- `models/game_models.dart` — `GamePlayer`, `PhotoInfo`, and a sealed `GameEvent` hierarchy (deserialize-only). **Pure Dart, no Flutter import** — per-player colours/avatars live in `ui/player_cosmetics.dart` instead, derived from a platform-stable hash (`String.hashCode` differs between the VM and dart2js, so the same player looked different on iOS and web).
 - `services/api_client.dart` — thin `http` REST wrapper; injectable `http.Client` for tests.
-- `services/game_socket.dart` — `web_socket_channel`, exposes `Stream<GameEvent>`.
-- `state/game_controller.dart` — `ChangeNotifier` (no Provider/Riverpod/Bloc). One instance is created in `HomeScreen` and passed by constructor down through Lobby → Game → Results. Owns the ApiClient + GameSocket and all live game state.
+- `services/game_socket.dart` — `web_socket_channel`, exposes `Stream<GameEvent>`. A `GameSocketFactory` typedef is injected into the controller so tests can drive state with a fake socket.
+- `state/game_controller.dart` — `ChangeNotifier` (no Provider/Riverpod/Bloc). One instance is created in `HomeScreen`, passed by constructor down through Lobby → Game → Results, and **disposed by `HomeScreen` when the pushed route returns** (it awaits the `push`) — otherwise every game leaks a live WebSocket. Identity lives in a non-nullable `GameSession` created at join time, so there are no `roomCode!` force-unwraps and a half-joined controller is unrepresentable. `connectionError` + `reconnect()` surface a dropped socket rather than freezing the game.
+- `theme/app_theme.dart` — `buildAppTheme()` plus an `AppColors` `ThemeExtension`; read it via `context.colors`.
+- `ui/` — cross-screen presentation: `player_cosmetics.dart`, `result_banner.dart`, `connection_banner.dart`, `error_text.dart` (`friendlyError` unwraps the backend's `{"detail": ...}` so raw JSON never reaches a player).
 - `screens/` — `home`, `lobby`, `game`, `results`.
 
 ### Backend (`backend/app/`)
@@ -27,7 +30,7 @@ Pure logic under thin I/O layers:
 - `main.py` — FastAPI routes (REST + one WS route `/ws/{code}/{player_id}`).
 - `store.py` — process-wide in-memory `GameStore` singleton (`dict[code→Room]`). **State is lost on restart and can't be shared across replicas.**
 - `connection.py` — `ConnectionManager`, broadcasts events to a room's sockets.
-- `timer.py` — `RoundDriver` drives round timing (sleep injectable for tests).
+- `timer.py` — `RoundDriver` drives round timing (sleep injectable for tests). It holds on the reveal for `REVEAL_SECONDS` before advancing; without that pause `round_revealed` and the next `round_started` land in the same tick and players never see whose photo it was. It re-checks the room before revealing, so a round that moved underneath it isn't announced with the wrong photo.
 - Photos are written to local disk under `uploads/{code}/` (ephemeral on Railway).
 
 ## Commands
@@ -36,7 +39,7 @@ Pure logic under thin I/O layers:
 ```sh
 flutter pub get
 flutter analyze
-flutter test
+flutter test                     # currently 56 tests
 flutter run                      # needs a simulator/device
 ```
 
@@ -45,8 +48,8 @@ flutter run                      # needs a simulator/device
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                           # currently 39 tests
-ruff check .                     # pyflakes (F) rules only — see backend/pyproject.toml
+pytest                           # currently 73 tests
+ruff check .                     # pyflakes (F) only; configured in backend/pyproject.toml
 ```
 
 ## Tickets / Backlog
@@ -74,6 +77,21 @@ backlog browser                  # web UI
 - **Never push to git without being asked** (also a global rule). Commit on the feature
   branch; open the PR only when the user requests it.
 - Branch feature work off `main`, not off another in-flight feature branch.
+
+## Game rules that are enforced server-side (don't re-litigate client-side)
+
+- **Scoring timing is the server's.** The round's deadline lives on `Round.ends_at`
+  (set by the `RoundDriver`); `submit_guess` derives `seconds_left` from it. The client
+  sends only `round_index`, never a countdown — it used to send `seconds_left`, and
+  posting `99999` was worth ~10M points.
+- **Guesses carry their round.** A guess in flight across a round boundary is rejected
+  rather than recorded against the round the player never saw (which also used to
+  consume their guess slot for the new round).
+- **Starting needs photos from 2+ distinct players**, or every round shows one person's
+  pictures and they win by recognising all of them. The lobby mirrors this in
+  `GameController.canStart` and shows real per-player readiness from `photo_count`.
+- Uploads are capped (8 MB, 10 per player, JPEG/PNG magic bytes checked, lobby only);
+  rooms cap at 12 players; names are 1–24 chars.
 
 ## Style
 

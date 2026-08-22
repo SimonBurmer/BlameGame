@@ -11,7 +11,7 @@ class PhotoPermissionDenied implements Exception {
 
 /// One sampled camera-roll photo: its library [id] (so a reshuffle can avoid
 /// offering the same picture twice), a small [thumbnail] for the preview grid,
-/// and the full-resolution [bytes] that get uploaded once confirmed.
+/// and the JPEG [bytes] that get uploaded once confirmed.
 class SampledPhoto {
   final String id;
   final Uint8List thumbnail;
@@ -27,6 +27,21 @@ class SampledPhoto {
 /// Size the preview thumbnails are requested at — the grid shows them a few
 /// hundred logical pixels wide at most, so decoding the original is wasteful.
 const _thumbnailSize = ThumbnailSize.square(300);
+
+/// Size the uploaded photo is requested at.
+///
+/// The upload deliberately goes through [AssetEntity.thumbnailDataWithSize]
+/// rather than `originBytes`. On iOS `originBytes` hands back the *original*
+/// resource bytes verbatim — HEIC for anything the camera shot with the default
+/// settings — and the server only accepts JPEG/PNG, because that is all the
+/// Flutter client can decode when the photo is served back. photo_manager's
+/// thumbnail pipeline always encodes JPEG (`ThumbnailFormat.jpeg`, which on iOS
+/// is `UIImageJPEGRepresentation`), so asking for a large "thumbnail" is a free
+/// HEIC→JPEG transcode with no extra dependency or server-side decoder.
+///
+/// 2048px is well above any phone screen the photo is shown on, and keeps the
+/// upload comfortably under the server's 8 MB cap.
+const _uploadSize = ThumbnailSize.square(2048);
 
 /// Samples random photos from the device camera roll using [PhotoManager],
 /// which also owns the photo-library permission prompt (no separate
@@ -71,7 +86,7 @@ class PhotoSampler {
       final asset = page.first;
       if (exclude.contains(asset.id)) continue;
       final thumbnail = await asset.thumbnailDataWithSize(_thumbnailSize);
-      final bytes = await asset.originBytes;
+      final bytes = await asset.thumbnailDataWithSize(_uploadSize);
       if (thumbnail == null || bytes == null) continue;
       result.add(
         SampledPhoto(id: asset.id, thumbnail: thumbnail, bytes: bytes),

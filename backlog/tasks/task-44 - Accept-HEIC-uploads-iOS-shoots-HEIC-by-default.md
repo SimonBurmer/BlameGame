@@ -1,10 +1,10 @@
 ---
 id: TASK-44
 title: Accept HEIC uploads (iOS shoots HEIC by default)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 13:45'
-updated_date: '2026-08-22 18:02'
+updated_date: '2026-08-22 22:36'
 labels:
   - backend
   - frontend

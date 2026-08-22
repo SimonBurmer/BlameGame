@@ -1,10 +1,10 @@
 ---
 id: TASK-45
 title: Close a kicked player's open WebSocket immediately
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 15:34'
-updated_date: '2026-08-22 17:59'
+updated_date: '2026-08-22 22:36'
 labels:
   - backend
   - security

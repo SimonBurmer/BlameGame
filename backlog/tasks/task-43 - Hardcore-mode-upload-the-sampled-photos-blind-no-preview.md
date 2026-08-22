@@ -1,10 +1,10 @@
 ---
 id: TASK-43
 title: 'Hardcore mode: upload the sampled photos blind, no preview'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 13:37'
-updated_date: '2026-08-22 18:05'
+updated_date: '2026-08-22 22:36'
 labels:
   - frontend
   - backend

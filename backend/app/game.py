@@ -21,6 +21,7 @@ __all__ = [
     "Room",
     "GameError",
     "add_player",
+    "remove_player",
     "add_photo",
     "start_game",
     "current_photo",
@@ -64,6 +65,54 @@ def add_player(room: Room, name: str) -> Player:
     return player
 
 
+def remove_player(room: Room, player_id: str) -> Player:
+    """Remove a player from a room. Shared by leaving and being kicked.
+
+    Their photos go with them -- a departed player can't be guessed, so any
+    round still pointing at their photo would be unwinnable. Rounds already
+    played keep their photo (the guesses are scored and the reveal happened);
+    only rounds not yet reached are re-pointed at a surviving photo.
+
+    The host leaving hands the role to the next player, so the room never ends
+    up with no one able to start or reset it.
+    """
+    player = room.player_by_id(player_id)
+    if player is None:
+        raise GameError("player is not in this room")
+
+    room.players.remove(player)
+    room.photos = [p for p in room.photos if p.owner_id != player_id]
+
+    if player.is_host and room.players:
+        room.players[0].is_host = True
+
+    # Their guesses in the current round no longer count towards "everyone has
+    # guessed", and stale entries would keep the round from ever closing early.
+    for rnd in room.rounds:
+        rnd.guesses.pop(player_id, None)
+
+    if room.state in (RoomState.IN_ROUND, RoomState.REVEALING):
+        _repoint_pending_rounds(room)
+
+    return player
+
+
+def _repoint_pending_rounds(room: Room) -> None:
+    """Point rounds not yet played at a photo whose owner is still here.
+
+    With too few players or no photos left there is no game to finish, so the
+    room jumps to FINISHED rather than running out the clock on rounds nobody
+    can win. The RoundDriver sees the state change and stops.
+    """
+    if len(room.players) < 2 or not room.photos:
+        room.state = RoomState.FINISHED
+        return
+    pool = list(room.photos)
+    for i, rnd in enumerate(room.rounds[room.current_round :]):
+        if room.player_by_id(rnd.photo.owner_id) is None:
+            rnd.photo = pool[i % len(pool)]
+
+
 def add_photo(room: Room, *, owner_id: str, url: str) -> Photo:
     """Register an uploaded photo for a player."""
     if room.player_by_id(owner_id) is None:
@@ -98,6 +147,9 @@ def start_game(room: Room, *, total_rounds: int = 5, round_seconds: int = 10) ->
     room.current_round = 0
     room.round_seconds = round_seconds
     room.state = RoomState.IN_ROUND
+    # New game, new epoch: any driver still sleeping on the previous one must
+    # not wake up and drive this game too.
+    room.epoch += 1
 
 
 def current_photo(room: Room) -> Photo:
@@ -195,3 +247,4 @@ def reset_room(room: Room) -> None:
     room.rounds = []
     room.current_round = 0
     room.state = RoomState.LOBBY
+    room.epoch += 1

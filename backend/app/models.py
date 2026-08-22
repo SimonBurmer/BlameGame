@@ -8,6 +8,7 @@ Written for Python 3.9 (uses typing.Optional/List, not `X | None`).
 from __future__ import annotations
 
 import enum
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -58,6 +59,17 @@ class Room:
     current_round: int = 0
     state: RoomState = RoomState.LOBBY
     round_seconds: int = 10
+    # Bumped every time a game is started or reset. A RoundDriver captures it
+    # at startup and re-checks after each await: the room is mutable shared
+    # state, and an await is the only point another coroutine can change it.
+    # Comparing the epoch tells a driver its game is over and it must stop,
+    # which a state/round check alone can't (a reset-then-restart looks
+    # identical to the round it was already driving).
+    epoch: int = 0
+    # Epoch seconds of the last time anyone touched this room. The store bumps
+    # it on every lookup and evicts rooms that go quiet, so abandoned rooms and
+    # their photos don't accumulate for the lifetime of the process.
+    last_active: float = field(default_factory=time.time)
 
     def player_by_id(self, player_id: str) -> Optional[Player]:
         for p in self.players:

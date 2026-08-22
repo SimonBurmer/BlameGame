@@ -77,21 +77,36 @@ class ApiClient {
     );
   }
 
+  /// The image subtype implied by [bytes]' magic number. Defaults to `jpeg`,
+  /// which the server rejects if the bytes really aren't an image.
+  static String _imageSubtype(Uint8List bytes) {
+    const pngMagic = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    if (bytes.length >= pngMagic.length &&
+        Iterable<int>.generate(pngMagic.length)
+            .every((i) => bytes[i] == pngMagic[i])) {
+      return 'png';
+    }
+    return 'jpeg';
+  }
+
   /// Upload a photo owned by [ownerId]. Returns the stored photo's relative URL.
   Future<String> uploadPhoto(
     String code,
     String ownerId,
     Uint8List bytes, {
-    String filename = 'photo.jpg',
+    String filename = 'photo',
   }) async {
+    // Sniff the bytes rather than trust the picker's filename: the server does
+    // the same, and a PNG announced as image/jpeg used to be stored as .jpg.
+    final subtype = _imageSubtype(bytes);
     final request = http.MultipartRequest(
       'POST',
       _uri('/rooms/$code/photos', {'owner_id': ownerId}),
     )..files.add(http.MultipartFile.fromBytes(
         'file',
         bytes,
-        filename: filename,
-        contentType: MediaType('image', 'jpeg'),
+        filename: '$filename.$subtype',
+        contentType: MediaType('image', subtype),
       ));
     final streamed = await _http.send(request).timeout(_timeout);
     final resp = await http.Response.fromStream(streamed);
@@ -152,6 +167,21 @@ class ApiClient {
     });
     return (body['points'] as num).toInt();
   }
+
+  /// Leave a room. The player is removed for everyone.
+  Future<void> leaveRoom(String code, {required String playerId}) =>
+      _postJson('/rooms/$code/leave', {'player_id': playerId});
+
+  /// Host removes another player from the room.
+  Future<void> kickPlayer(
+    String code, {
+    required String hostId,
+    required String playerId,
+  }) =>
+      _postJson('/rooms/$code/kick', {
+        'host_id': hostId,
+        'player_id': playerId,
+      });
 
   /// Host resets the room back to the lobby for a new round.
   Future<void> resetRoom(String code, {required String hostId}) =>

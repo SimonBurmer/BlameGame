@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Awaitable, Callable, Dict
+from typing import Awaitable, Callable, Dict, Optional
 
 from app.game import advance_round, current_photo, everyone_has_guessed
 from app.models import Room, RoomState
@@ -49,10 +49,26 @@ class RoundDriver:
         self._sleep = sleep
         self._time_fn = time_fn
         self._on_event = on_event
+        # The game this driver was spawned for. If the room is reset and
+        # restarted while we're sleeping, the epoch moves and we bow out
+        # rather than drive someone else's game.
+        self._epoch = room.epoch
 
     def _photo_dict(self) -> Dict:
         photo = current_photo(self.room)
         return {"id": photo.id, "owner_id": photo.owner_id, "url": photo.url}
+
+    def _still_ours(self, round_index: Optional[int] = None) -> bool:
+        """True while the room is still running the game (and round) we drive.
+
+        Every await is a window for a REST handler to reset or restart the
+        room underneath us; this is the check taken on the other side of one.
+        """
+        if self.room.epoch != self._epoch:
+            return False
+        if round_index is not None and self.room.current_round != round_index:
+            return False
+        return True
 
     async def _wait_for_round(self, round_seconds: float) -> None:
         """Wait out the round, or return early once everyone has guessed."""
@@ -61,12 +77,16 @@ class RoundDriver:
             step = min(_POLL_INTERVAL, remaining)
             await self._sleep(step)
             remaining -= step
+            # Stop polling a room that was reset/restarted under us rather
+            # than sitting out the rest of a round we no longer own.
+            if not self._still_ours():
+                return
             if everyone_has_guessed(self.room):
                 return
 
     async def run(self) -> None:
         """Drive the game from its first round to completion."""
-        while self.room.state == RoomState.IN_ROUND:
+        while self.room.state == RoomState.IN_ROUND and self._still_ours():
             round_index = self.room.current_round
             round_seconds = self.room.round_seconds
             this_round = self.room.rounds[round_index]
@@ -89,10 +109,7 @@ class RoundDriver:
             # The room can move while we wait (a reset, or another driver).
             # Re-read before revealing: otherwise we'd announce this round's
             # index with the *next* round's photo, and double-advance.
-            if (
-                self.room.state != RoomState.IN_ROUND
-                or self.room.current_round != round_index
-            ):
+            if self.room.state != RoomState.IN_ROUND or not self._still_ours(round_index):
                 return
 
             owner_id = current_photo(self.room).owner_id
@@ -108,7 +125,18 @@ class RoundDriver:
             )
 
             await self._sleep(REVEAL_SECONDS)
+            # Same re-check on the far side of the reveal hold. Without it a
+            # restarted room gets advanced by the *previous* game's driver:
+            # advance_round() would skip that game's first round, or raise on
+            # an already-FINISHED room and kill the task.
+            if not self._still_ours(round_index):
+                return
             advance_round(self.room)
+
+        # Left the loop because the room moved on without us -> not our game
+        # to announce; the driver that owns it will emit its own result.
+        if not self._still_ours():
+            return
 
         # Left the IN_ROUND loop -> the game is finished.
         from app.game import rankings  # local import avoids a cycle at module load

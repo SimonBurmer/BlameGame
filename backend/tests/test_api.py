@@ -301,6 +301,194 @@ def test_reset_broadcasts_room_reset_event(client):
         assert {p["name"] for p in event["players"]} == {"Emma", "Jake"}
 
 
+# --- leaving / kicking -----------------------------------------------------
+
+def test_player_can_leave_a_room(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    resp = client.post(f"/rooms/{code}/leave", json={"player_id": jake_id})
+
+    assert resp.status_code == 200
+    assert {p["name"] for p in resp.json()["players"]} == {"Emma"}
+
+
+def test_leaving_broadcasts_player_left(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        resp = client.post(f"/rooms/{code}/leave", json={"player_id": jake_id})
+        assert resp.status_code == 200
+        event = ws.receive_json()
+
+    assert event["type"] == "player_left"
+    assert event["player_id"] == jake_id
+    assert event["kicked"] is False
+    assert {p["name"] for p in event["players"]} == {"Emma"}
+
+
+def test_leaving_an_unknown_player_is_a_400(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    resp = client.post(f"/rooms/{code}/leave", json={"player_id": "nobody"})
+    assert resp.status_code == 400
+
+
+def test_leave_unknown_room_404(client):
+    resp = client.post("/rooms/ZZZZZ/leave", json={"player_id": "whoever"})
+    assert resp.status_code == 404
+
+
+def test_host_can_kick_a_player(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    resp = client.post(
+        f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id}
+    )
+
+    assert resp.status_code == 200
+    assert {p["name"] for p in resp.json()["players"]} == {"Emma"}
+
+
+def test_kick_broadcasts_player_left_flagged_as_kicked(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        resp = client.post(
+            f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id}
+        )
+        assert resp.status_code == 200
+        event = ws.receive_json()
+
+    # The flag is what lets the kicked player's client explain why it ejected.
+    assert event["type"] == "player_left"
+    assert event["kicked"] is True
+
+
+def test_non_host_cannot_kick(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    resp = client.post(
+        f"/rooms/{code}/kick", json={"host_id": jake_id, "player_id": host_id}
+    )
+
+    assert resp.status_code == 403
+    # And the target is still in the room.
+    assert {p["name"] for p in client.get(f"/rooms/{code}").json()["players"]} == {
+        "Emma",
+        "Jake",
+    }
+
+
+def test_host_cannot_kick_themselves(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _join(client, code, "Jake")
+
+    resp = client.post(
+        f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": host_id}
+    )
+
+    assert resp.status_code == 400
+
+
+def test_kicking_an_unknown_player_is_a_400(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    resp = client.post(
+        f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": "nobody"}
+    )
+    assert resp.status_code == 400
+
+
+def test_kick_unknown_room_404(client):
+    resp = client.post(
+        "/rooms/ZZZZZ/kick", json={"host_id": "whoever", "player_id": "someone"}
+    )
+    assert resp.status_code == 404
+
+
+def test_host_leaving_hands_the_role_to_someone_else(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _join(client, code, "Jake")
+
+    resp = client.post(f"/rooms/{code}/leave", json={"player_id": host_id})
+
+    assert resp.status_code == 200
+    # A room with no host could never be started or reset again.
+    players = resp.json()["players"]
+    assert [p["name"] for p in players if p["is_host"]] == ["Jake"]
+
+
+def test_new_host_can_actually_start_the_game(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    sam_id = _join(client, code, "Sam")
+    _upload_photo(client, code, jake_id)
+    _upload_photo(client, code, sam_id)
+
+    client.post(f"/rooms/{code}/leave", json={"player_id": host_id})
+
+    # The handover has to be real, not just a flag in the payload.
+    resp = _start(client, code, jake_id)
+    assert resp.status_code == 200
+
+
+def test_leaving_removes_the_players_photos(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    _upload_photo(client, code, jake_id)
+
+    client.post(f"/rooms/{code}/leave", json={"player_id": jake_id})
+
+    room = store.get_room(code)
+    assert [p.owner_id for p in room.photos] == [host_id]
+
+
+def test_kicked_player_is_refused_a_new_socket(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    client.post(f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id})
+
+    # The feed carries every photo URL in the game, so a removed player must
+    # not be able to reconnect to it.
+    with pytest.raises(Exception):
+        with client.websocket_connect(f"/ws/{code}/{jake_id}"):
+            pass
+
+
+def test_leaving_mid_game_does_not_leave_a_round_on_a_departed_player(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    sam_id = _join(client, code, "Sam")
+    _upload_photo(client, code, host_id)
+    _upload_photo(client, code, jake_id)
+    _upload_photo(client, code, sam_id)
+    _start(client, code, host_id, total_rounds=4, round_seconds=30)
+
+    client.post(f"/rooms/{code}/leave", json={"player_id": jake_id})
+
+    room = store.get_room(code)
+    # Any round still to be played must show a photo someone can be blamed for.
+    for rnd in room.rounds[room.current_round:]:
+        assert room.player_by_id(rnd.photo.owner_id) is not None
+
+
 # --- serving photos --------------------------------------------------------
 
 def test_uploaded_photo_can_be_fetched_back(client):
@@ -311,6 +499,30 @@ def test_uploaded_photo_can_be_fetched_back(client):
     resp = client.get(url)
     assert resp.status_code == 200
     assert resp.content == b"\xff\xd8\xff_fake_jpeg"
+
+
+def test_png_round_trips_as_png(client):
+    # Uploads used to be stored as .jpg whatever the bytes were, so a PNG came
+    # back labelled image/jpeg.
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    png = b"\x89PNG\r\n\x1a\n_fake_png"
+    # Header deliberately lies: the bytes decide.
+    url = _upload_photo(client, code, host_id, content=png).json()["url"]
+    assert url.endswith(".png")
+
+    resp = client.get(url)
+    assert resp.status_code == 200
+    assert resp.content == png
+    assert resp.headers["content-type"] == "image/png"
+
+
+def test_jpeg_round_trips_as_jpeg(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    url = _upload_photo(client, code, host_id).json()["url"]
+    assert url.endswith(".jpg")
+    assert client.get(url).headers["content-type"] == "image/jpeg"
 
 
 def test_photo_route_does_not_serve_files_outside_the_upload_dir(client):
@@ -376,7 +588,7 @@ def test_a_rejected_upload_leaves_no_file_behind(client, tmp_path, monkeypatch):
 
     resp = _upload_photo(client, code, "not-a-player")
     assert resp.status_code == 400
-    assert list(tmp_path.rglob("*.jpg")) == []
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
 
 
 def test_room_has_a_player_cap(client):
@@ -457,3 +669,73 @@ def test_websocket_rejects_a_non_player(client):
     with pytest.raises(Exception):
         with client.websocket_connect(f"/ws/{code}/not-a-player") as ws:
             ws.receive_json()
+
+
+# --- ending a room ---------------------------------------------------------
+
+def test_host_can_end_a_room_and_its_photos_go_with_it(client, tmp_path, monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path)
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _upload_photo(client, code, host_id)
+    assert (tmp_path / code).is_dir()
+
+    resp = client.request("DELETE", f"/rooms/{code}", params={"host_id": host_id})
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+    assert not (tmp_path / code).exists()
+    assert client.get(f"/rooms/{code}").status_code == 404
+
+
+def test_only_host_can_end_a_room(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    resp = client.request("DELETE", f"/rooms/{code}", params={"host_id": jake_id})
+    assert resp.status_code == 403
+    assert client.get(f"/rooms/{code}").status_code == 200
+
+
+def test_end_unknown_room_404(client):
+    resp = client.request("DELETE", "/rooms/ZZZZZ", params={"host_id": "whoever"})
+    assert resp.status_code == 404
+
+
+def test_ending_a_room_broadcasts_room_closed(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        resp = client.request("DELETE", f"/rooms/{code}", params={"host_id": host_id})
+        assert resp.status_code == 200
+        assert ws.receive_json()["type"] == "room_closed"
+
+
+def test_evicting_a_stale_room_deletes_its_uploads(client, tmp_path, monkeypatch):
+    """The TTL sweep must take the photos with it, not just the dict entry."""
+    import app.main as main
+
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path)
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    _upload_photo(client, code, host_id)
+    assert (tmp_path / code).is_dir()
+
+    # Age the room past the TTL rather than waiting six hours for it.
+    store.get_room(code).last_active -= store._ttl + 1
+    assert store.sweep() == [code]
+    assert not (tmp_path / code).exists()
+
+
+def test_upload_cleanup_refuses_a_path_outside_the_upload_dir(tmp_path, monkeypatch):
+    import app.main as main
+
+    monkeypatch.setattr(main, "UPLOAD_DIR", tmp_path)
+    victim = tmp_path.parent / "not-ours"
+    victim.mkdir()
+
+    main._delete_room_uploads("../not-ours")
+    assert victim.is_dir()

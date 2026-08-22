@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -28,6 +29,7 @@ from app.game import (
     GameError,
     add_photo,
     add_player,
+    remove_player,
     reset_room,
     start_game,
     submit_guess,
@@ -50,6 +52,25 @@ _UPLOAD_CHUNK = 64 * 1024
 _background_tasks: set[asyncio.Task] = set()
 
 logger = logging.getLogger(__name__)
+
+
+def _delete_room_uploads(code: str) -> None:
+    """Delete one room's upload directory, and nothing else.
+
+    Deleting a tree is destructive, so the target is re-derived from the room
+    code and checked to be a direct child of UPLOAD_DIR: a code containing
+    `..` or a separator resolves outside it and is refused rather than
+    recursively removing whatever it happens to point at.
+    """
+    base = UPLOAD_DIR.resolve()
+    room_dir = (base / code).resolve()
+    if room_dir.parent != base:
+        logger.error("refusing to delete uploads outside %s: %r", base, code)
+        return
+    shutil.rmtree(room_dir, ignore_errors=True)
+
+
+store.on_evict = _delete_room_uploads
 
 
 def _spawn(coro) -> None:
@@ -123,6 +144,15 @@ class ResetBody(BaseModel):
     host_id: str
 
 
+class LeaveBody(BaseModel):
+    player_id: str
+
+
+class KickBody(BaseModel):
+    host_id: str
+    player_id: str
+
+
 # --- serialization helpers ----------------------------------------------
 
 def _player_dict(p: Player, room: Room | None = None) -> dict:
@@ -188,14 +218,20 @@ async def upload_photo(
         raise HTTPException(status_code=400, detail="file must be an image")
 
     data = await _read_capped(file)
-    # Trust the bytes, not the client's content-type header.
-    if not data.startswith((b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")):
+    # Trust the bytes, not the client's content-type header -- that also means
+    # the extension we store comes from the bytes, so a PNG isn't served as
+    # a .jpg and decoded by whatever the client guesses.
+    if data.startswith(b"\xff\xd8\xff"):
+        ext = "jpg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        ext = "png"
+    else:
         raise HTTPException(status_code=400, detail="file must be a JPEG or PNG")
 
     # Register the photo before writing it, so a rejected upload never leaves
     # an orphan file on disk.
     photo_id = uuid.uuid4().hex[:12]
-    url = f"/rooms/{room.code}/photos/{photo_id}.jpg"
+    url = f"/rooms/{room.code}/photos/{photo_id}.{ext}"
     try:
         photo = add_photo(room, owner_id=owner_id, url=url)
     except GameError as e:
@@ -203,7 +239,7 @@ async def upload_photo(
 
     room_dir = UPLOAD_DIR / room.code
     room_dir.mkdir(parents=True, exist_ok=True)
-    (room_dir / f"{photo_id}.jpg").write_bytes(data)
+    (room_dir / f"{photo_id}.{ext}").write_bytes(data)
 
     # Tell the lobby who is ready, so the host isn't guessing.
     await manager.broadcast(
@@ -280,6 +316,43 @@ async def guess(code: str, body: GuessBody) -> dict:
     return {"points": points, "correct": points > 0}
 
 
+async def _remove_and_broadcast(room: Room, player_id: str, *, kicked: bool) -> dict:
+    """Drop a player and tell the room. Shared by leaving and being kicked."""
+    try:
+        remove_player(room, player_id)
+    except GameError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # One event for both: clients need the same reaction either way, and
+    # `kicked` lets the removed player's own client say why it was ejected.
+    await manager.broadcast(
+        room.code,
+        {
+            "type": "player_left",
+            "player_id": player_id,
+            "kicked": kicked,
+            "players": [_player_dict(p, room) for p in room.players],
+        },
+    )
+    return _room_dict(room)
+
+
+@app.post("/rooms/{code}/leave")
+async def leave(code: str, body: LeaveBody) -> dict:
+    room = _get_room(code)
+    return await _remove_and_broadcast(room, body.player_id, kicked=False)
+
+
+@app.post("/rooms/{code}/kick")
+async def kick(code: str, body: KickBody) -> dict:
+    room = _get_room(code)
+    host = room.player_by_id(body.host_id)
+    if host is None or not host.is_host:
+        raise HTTPException(status_code=403, detail="only the host can kick")
+    if body.player_id == body.host_id:
+        raise HTTPException(status_code=400, detail="the host cannot kick themselves")
+    return await _remove_and_broadcast(room, body.player_id, kicked=True)
+
+
 @app.post("/rooms/{code}/reset")
 async def reset(code: str, body: ResetBody) -> dict:
     room = _get_room(code)
@@ -298,6 +371,19 @@ async def reset(code: str, body: ResetBody) -> dict:
         },
     )
     return _room_dict(room)
+
+
+@app.delete("/rooms/{code}")
+async def end_room(code: str, host_id: str) -> dict:
+    room = _get_room(code)
+    host = room.player_by_id(host_id)
+    if host is None or not host.is_host:
+        raise HTTPException(status_code=403, detail="only the host can end the room")
+    # Tell everyone before the room is gone: after the delete there is no room
+    # to broadcast to, and clients would just see their socket drop.
+    await manager.broadcast(room.code, {"type": "room_closed"})
+    store.delete_room(room.code)
+    return {"code": room.code, "deleted": True}
 
 
 # --- WebSocket -----------------------------------------------------------

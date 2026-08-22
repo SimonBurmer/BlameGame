@@ -4,6 +4,9 @@ import '../config.dart';
 import '../models/game_models.dart';
 import '../services/photo_sampler.dart';
 import '../state/game_controller.dart';
+import '../theme/app_theme.dart';
+import '../ui/connection_banner.dart';
+import '../ui/player_cosmetics.dart';
 import 'game_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
@@ -34,6 +37,9 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 
   void _onChange() {
+    // Guard first: this fires from the WebSocket stream, so the State can be
+    // defunct by now and Navigator.of(context) would throw.
+    if (!mounted) return;
     // When the backend starts the game, move everyone to the game screen.
     if (!_navigated && c.phase != GamePhase.lobby) {
       _navigated = true;
@@ -42,7 +48,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
       );
       return;
     }
-    if (mounted) setState(() {});
+    setState(() {});
   }
 
   /// Auto-samples random photos from the camera roll and batch-uploads them.
@@ -94,13 +100,18 @@ class _LobbyScreenState extends State<LobbyScreen> {
         child: SafeArea(
           child: Column(
             children: [
+              ConnectionBanner(controller: c),
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: const Icon(
+                    // IconButton, not a bare GestureDetector: a 24x24 icon is
+                    // half the 48x48 minimum tap target and carries no button
+                    // semantics for screen readers.
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Back',
+                      icon: const Icon(
                         Icons.arrow_back_ios,
                         color: Colors.white,
                       ),
@@ -165,26 +176,32 @@ class _LobbyScreenState extends State<LobbyScreen> {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            'Game Code: ',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 16,
+      // FittedBox: the code is 24pt with 6pt letter-spacing, which overflows a
+      // narrow phone (and any phone at a large text scale) without it.
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'Game Code: ',
+              style: TextStyle(
+                color: context.colors.onSurfaceMuted,
+                fontSize: 16,
+              ),
             ),
-          ),
-          Text(
-            c.roomCode ?? '-----',
-            style: const TextStyle(
-              color: Color(0xFFE94560),
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 6,
+            Text(
+              c.roomCode ?? '-----',
+              style: TextStyle(
+                color: context.colors.brand,
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 6,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -236,19 +253,33 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 ),
               ),
             )
-          else
+          else if (player.hasPhotos)
             Icon(
               Icons.check_circle,
+              semanticLabel: '${player.name} has added photos',
               color: Colors.greenAccent.withValues(alpha: 0.7),
+            )
+          else
+            Icon(
+              Icons.hourglass_empty,
+              semanticLabel: '${player.name} has not added photos yet',
+              color: Colors.white.withValues(alpha: 0.35),
             ),
         ],
       ),
     );
   }
 
+  /// Why START is disabled, so the host isn't left guessing.
+  String _blockedReason() {
+    if (c.players.length < 2) return 'NEED 2+ PLAYERS';
+    return 'NEED PHOTOS FROM 2+ PLAYERS';
+  }
+
   Widget _bottomControls() {
-    // Everyone can add a photo; only the host can start.
-    final canStart = c.isHost && c.players.length >= 2;
+    // Everyone can add a photo; only the host can start, and only once at
+    // least two people have contributed (the server enforces the same rule).
+    final canStart = c.canStart;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
@@ -307,7 +338,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   ),
                 ),
                 child: Text(
-                  canStart ? 'START GAME' : 'NEED 2+ PLAYERS',
+                  canStart ? 'START GAME' : _blockedReason(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,

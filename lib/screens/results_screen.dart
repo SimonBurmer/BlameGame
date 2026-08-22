@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/game_models.dart';
 import '../state/game_controller.dart';
+import '../ui/error_text.dart';
+import '../ui/player_cosmetics.dart';
 import 'lobby_screen.dart';
 
 class ResultsScreen extends StatefulWidget {
@@ -32,6 +34,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   void _onChange() {
+    if (!mounted) return;
     // Any player (not just the host who triggered it) lands back in the
     // lobby once the backend confirms the reset over the WebSocket.
     if (!_navigated && controller.phase == GamePhase.lobby) {
@@ -39,7 +42,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => LobbyScreen(controller: controller)),
       );
+      return;
     }
+    // Without this the leaderboard is a frozen snapshot: late-arriving
+    // results and connection changes would never render.
+    setState(() {});
   }
 
   Future<void> _startNewRound() async {
@@ -51,7 +58,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
       if (!mounted) return;
       setState(() => _resetting = false);
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not start new round: $e')));
+          .showSnackBar(SnackBar(content: Text('Could not start new round: ${friendlyError(e)}')));
     }
   }
 

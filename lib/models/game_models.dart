@@ -1,52 +1,65 @@
-import 'package:flutter/material.dart';
-
-/// A player as reported by the backend. Colors/avatars are NOT sent by the
-/// server — they're derived client-side from the id for a stable, cosmetic look.
+/// A player as reported by the backend.
+///
+/// Pure Dart: colours and avatars are not part of the wire contract, they're
+/// derived client-side by the `PlayerCosmetics` extension in lib/ui/.
 class GamePlayer {
   final String id;
   final String name;
   final int score;
   final bool isHost;
 
+  /// How many photos this player has contributed. Drives the lobby's ready
+  /// state; absent from ranking payloads, where it defaults to 0.
+  final int photoCount;
+
   const GamePlayer({
     required this.id,
     required this.name,
     this.score = 0,
     this.isHost = false,
+    this.photoCount = 0,
   });
+
+  /// True once this player has contributed at least one photo.
+  bool get hasPhotos => photoCount > 0;
 
   factory GamePlayer.fromJson(Map<String, dynamic> json) => GamePlayer(
         id: json['id'] as String,
         name: json['name'] as String,
         score: (json['score'] as num?)?.toInt() ?? 0,
         isHost: json['is_host'] as bool? ?? false,
+        photoCount: (json['photo_count'] as num?)?.toInt() ?? 0,
       );
 
-  /// Stable cosmetic color derived from the id.
-  Color get color => _cosmeticColors[id.hashCode.abs() % _cosmeticColors.length];
+  GamePlayer copyWith({
+    String? name,
+    int? score,
+    bool? isHost,
+    int? photoCount,
+  }) =>
+      GamePlayer(
+        id: id,
+        name: name ?? this.name,
+        score: score ?? this.score,
+        isHost: isHost ?? this.isHost,
+        photoCount: photoCount ?? this.photoCount,
+      );
 
-  /// Stable cosmetic avatar derived from the id.
-  IconData get avatar => _cosmeticAvatars[id.hashCode.abs() % _cosmeticAvatars.length];
+  @override
+  bool operator ==(Object other) =>
+      other is GamePlayer &&
+      other.id == id &&
+      other.name == name &&
+      other.score == score &&
+      other.isHost == isHost &&
+      other.photoCount == photoCount;
+
+  @override
+  int get hashCode => Object.hash(id, name, score, isHost, photoCount);
+
+  @override
+  String toString() => 'GamePlayer($id, $name, score: $score, host: $isHost)';
 }
-
-const List<Color> _cosmeticColors = [
-  Colors.blue,
-  Colors.pink,
-  Colors.green,
-  Colors.orange,
-  Colors.purple,
-  Colors.tealAccent,
-  Colors.amber,
-];
-
-const List<IconData> _cosmeticAvatars = [
-  Icons.person,
-  Icons.face_2,
-  Icons.face_3,
-  Icons.face_4,
-  Icons.face_5,
-  Icons.face_6,
-];
 
 /// A photo reference from the backend (URL is relative to [apiBase]).
 class PhotoInfo {
@@ -61,6 +74,16 @@ class PhotoInfo {
         ownerId: json['owner_id'] as String,
         url: json['url'] as String,
       );
+
+  @override
+  bool operator ==(Object other) =>
+      other is PhotoInfo &&
+      other.id == id &&
+      other.ownerId == ownerId &&
+      other.url == url;
+
+  @override
+  int get hashCode => Object.hash(id, ownerId, url);
 }
 
 /// Base type for events pushed over the WebSocket. We decode by the `type`
@@ -94,6 +117,12 @@ sealed class GameEvent {
       case 'game_finished':
         return GameFinished(
           (json['rankings'] as List<dynamic>)
+              .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
+              .toList(),
+        );
+      case 'photos_updated':
+        return PhotosUpdated(
+          (json['players'] as List<dynamic>)
               .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
               .toList(),
         );
@@ -147,6 +176,13 @@ class GuessResult extends GameEvent {
 class GameFinished extends GameEvent {
   final List<GamePlayer> rankings;
   const GameFinished(this.rankings);
+}
+
+/// Someone uploaded a photo: carries the refreshed roster so the lobby can
+/// show who is ready.
+class PhotosUpdated extends GameEvent {
+  final List<GamePlayer> players;
+  const PhotosUpdated(this.players);
 }
 
 class RoomReset extends GameEvent {

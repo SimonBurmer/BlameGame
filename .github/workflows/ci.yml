@@ -60,18 +60,11 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
-  deploy:
-    needs: [backend-test, backend-build, flutter-test]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm install -g @railway/cli
-      # Uploads backend/ as the build root, so the Railway service must have an
-      # empty Root Directory. Setting it to "backend" as well nests the path
-      # twice and fails with "Failed to read app source directory".
-      - run: railway up --service "$RAILWAY_SERVICE" --ci
-        working-directory: backend
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE }}
+# Deployment is not run from here. Railway's own GitHub integration watches
+# main and redeploys only when /backend/** changes, which is the filtering we
+# want and which it can do natively — see backend/README.md.
+#
+# It cannot be done from a `railway up` job: that command uploads the contents
+# of backend/ as the archive root, so inside the upload the paths are
+# app/main.py rather than backend/app/main.py, and a /backend/** watch pattern
+# matches nothing and silently skips every deploy.

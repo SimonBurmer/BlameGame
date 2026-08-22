@@ -4,6 +4,7 @@ title: Accept HEIC uploads (iOS shoots HEIC by default)
 status: To Do
 assignee: []
 created_date: '2026-08-22 13:45'
+updated_date: '2026-08-22 13:47'
 labels:
   - backend
   - frontend
@@ -24,7 +25,9 @@ Check first whether photo_manager's originBytes already hands back a transcoded 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A HEIC original from an iOS camera roll can be contributed successfully
-- [ ] #2 The server only accepts formats it can actually serve back
-- [ ] #3 The behaviour is covered by a test using real HEIC magic bytes
+- [ ] #1 The server only accepts formats it can actually serve back
+- [ ] #2 The behaviour is covered by a test using real HEIC magic bytes
+- [ ] #3 A HEIC original from an iOS camera roll can be contributed successfully
+- [ ] #4 The server only accepts formats it can actually serve back
+- [ ] #5 The behaviour is covered by a test using real HEIC magic bytes
 <!-- AC:END -->

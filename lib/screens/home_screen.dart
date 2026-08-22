@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../state/game_controller.dart';
+import '../ui/error_text.dart';
 import 'lobby_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -49,13 +50,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final controller = GameController();
     try {
       await action(controller);
-      if (!mounted) return;
-      Navigator.of(context).push(
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      // Home created it, so Home tears it down: awaiting the push means this
+      // runs whenever the game flow unwinds back here, however it unwinds.
+      // Without it every game leaks a live WebSocket and an http.Client.
+      await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => LobbyScreen(controller: controller)),
       );
+      controller.dispose();
     } catch (e) {
       controller.dispose();
-      if (mounted) setState(() => _error = 'Could not connect: $e');
+      if (mounted) setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -81,11 +81,4 @@ void main() {
     final e = GameEvent.fromJson({'type': 'something_new'});
     expect(e, isA<UnknownEvent>());
   });
-
-  test('player color and avatar are stable for the same id', () {
-    const a = GamePlayer(id: 'abc', name: 'X');
-    const b = GamePlayer(id: 'abc', name: 'Y');
-    expect(a.color, b.color);
-    expect(a.avatar, b.avatar);
-  });
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
@@ -9,23 +10,54 @@ import '../services/game_socket.dart';
 /// Which phase of the game the UI is in.
 enum GamePhase { lobby, inRound, revealed, finished }
 
+/// Identity established once the player has joined a room.
+///
+/// Modelled as a single object so the "joined" invariant is expressed once:
+/// either we have a room and a player id, or we have neither. That removes the
+/// `roomCode!` / `myPlayerId!` force-unwraps this class used to carry, and
+/// makes a half-joined controller unrepresentable.
+@immutable
+class GameSession {
+  final String roomCode;
+  final String playerId;
+  final bool isHost;
+
+  const GameSession({
+    required this.roomCode,
+    required this.playerId,
+    required this.isHost,
+  });
+}
+
 /// Holds all live game state and owns the API + WebSocket connections.
 ///
 /// Screens listen to this ([ChangeNotifier]) and rebuild when it changes.
 /// One controller instance is created when a player creates/joins a room and
-/// passed down through the screens.
+/// passed down through the screens, which own disposing it.
 class GameController extends ChangeNotifier {
   final ApiClient api;
+  final GameSocketFactory _socketFactory;
 
-  GameController({ApiClient? api}) : api = api ?? ApiClient();
+  GameController({ApiClient? api, GameSocketFactory? socketFactory})
+      : api = api ?? ApiClient(),
+        _socketFactory = socketFactory ?? GameSocket.connect;
 
-  // Identity / room
-  String? roomCode;
-  String? myPlayerId;
-  bool isHost = false;
+  GameSession? _session;
 
-  // Live state
-  final List<GamePlayer> players = [];
+  /// Identity of the joined room. Throws if read before a successful join —
+  /// screens are only reachable after one, so this never fires in practice.
+  GameSession get session =>
+      _session ?? (throw StateError('GameController used before joining'));
+
+  String? get roomCode => _session?.roomCode;
+  String? get myPlayerId => _session?.playerId;
+  bool get isHost => _session?.isHost ?? false;
+
+  // Live state. The backing list stays private so screens can't mutate it
+  // behind the notifier's back; `players` is a cached unmodifiable view.
+  final List<GamePlayer> _players = [];
+  late final List<GamePlayer> players = UnmodifiableListView(_players);
+
   GamePhase phase = GamePhase.lobby;
 
   // Round state
@@ -35,18 +67,35 @@ class GameController extends ChangeNotifier {
   bool hasGuessedThisRound = false;
   int? lastPointsEarned;
   int roundSeconds = 10;
+
   /// Server epoch-ms deadline for the current round, or null between rounds.
   int? roundEndsAt;
 
   // Results
-  List<GamePlayer> finalRankings = [];
+  List<GamePlayer> _finalRankings = const [];
+  List<GamePlayer> get finalRankings => UnmodifiableListView(_finalRankings);
+
+  /// Non-null once the live connection has dropped. Screens surface this and
+  /// offer [reconnect]; without it a dropped socket silently freezes the game.
+  String? connectionError;
 
   GameSocket? _socket;
   StreamSubscription<GameEvent>? _sub;
 
-  GamePlayer? get me {
-    for (final p in players) {
-      if (p.id == myPlayerId) return p;
+  GamePlayer? get me => _playerById(myPlayerId);
+
+  /// The game needs photos from two different people, or every round shows
+  /// the same player's pictures. Mirrors the server's start rule.
+  bool get canStart =>
+      isHost && _players.length >= 2 && _players.where((p) => p.hasPhotos).length >= 2;
+
+  /// Name of the player whose photo was just revealed, for the result banner.
+  String get revealedOwnerName => _playerById(revealedOwnerId)?.name ?? 'someone';
+
+  GamePlayer? _playerById(String? id) {
+    if (id == null) return null;
+    for (final p in _players) {
+      if (p.id == id) return p;
     }
     return null;
   }
@@ -62,31 +111,92 @@ class GameController extends ChangeNotifier {
 
   Future<void> _join(String code, String name) async {
     final result = await api.joinRoom(code, name);
-    roomCode = code;
-    myPlayerId = result.playerId;
-    isHost = result.isHost;
+    _session = GameSession(
+      roomCode: code,
+      playerId: result.playerId,
+      isHost: result.isHost,
+    );
 
-    // Seed the current player list, then connect the socket for live updates.
-    final snapshot = await api.getRoom(code);
-    players
-      ..clear()
-      ..addAll(snapshot.players);
-    roundSeconds = snapshot.roundSeconds;
-
+    // Connect *before* snapshotting. The other order drops anyone who joins
+    // in between: they're missing from the snapshot, and their player_joined
+    // went out before this socket existed. Nothing re-syncs the roster
+    // mid-game, so that player stays invisible — and every round showing
+    // their photo is an automatic zero.
     _connectSocket();
+    try {
+      final snapshot = await api.getRoom(code);
+      _mergeRoster(snapshot.players);
+      roundSeconds = snapshot.roundSeconds;
+    } catch (_) {
+      // Don't leave a half-joined controller behind.
+      await _teardownSocket();
+      _session = null;
+      _players.clear();
+      rethrow;
+    }
     notifyListeners();
   }
 
+  /// Folds a server snapshot into the live roster.
+  ///
+  /// The snapshot wins for players in both (fresher scores and photo counts),
+  /// and anyone learned only from an event that raced the snapshot is kept.
+  void _mergeRoster(List<GamePlayer> fromServer) {
+    final seen = <String>{};
+    final merged = <GamePlayer>[];
+    for (final p in fromServer) {
+      if (seen.add(p.id)) merged.add(p);
+    }
+    for (final p in _players) {
+      if (seen.add(p.id)) merged.add(p);
+    }
+    _players
+      ..clear()
+      ..addAll(merged);
+  }
+
+  Future<void> _teardownSocket() async {
+    await _sub?.cancel();
+    await _socket?.close();
+    _sub = null;
+    _socket = null;
+  }
+
   void _connectSocket() {
-    _socket = GameSocket.connect(roomCode!, myPlayerId!);
-    _sub = _socket!.events.listen(_onEvent);
+    final s = session;
+    _socket = _socketFactory(s.roomCode, s.playerId);
+    _sub = _socket!.events.listen(
+      _onEvent,
+      onError: (Object e) => _setConnectionError('Connection error: $e'),
+      onDone: () => _setConnectionError('Lost connection to the game'),
+    );
+  }
+
+  void _setConnectionError(String message) {
+    connectionError = message;
+    notifyListeners();
+  }
+
+  /// Re-open the socket and re-sync from the server.
+  ///
+  /// The snapshot refetch is mandatory, not an optimisation: events that fired
+  /// while we were disconnected are gone, so replaying server state is the
+  /// only way back into sync.
+  Future<void> reconnect() async {
+    await _teardownSocket();
+    _connectSocket();
+    final snapshot = await api.getRoom(session.roomCode);
+    _mergeRoster(snapshot.players);
+    roundSeconds = snapshot.roundSeconds;
+    connectionError = null;
+    notifyListeners();
   }
 
   void _onEvent(GameEvent event) {
     switch (event) {
       case PlayerJoined(:final player):
-        if (!players.any((p) => p.id == player.id)) {
-          players.add(player);
+        if (!_players.any((p) => p.id == player.id)) {
+          _players.add(player);
         }
       case RoundStarted(:final roundIndex, :final photo, :final roundEndsAt):
         this.roundIndex = roundIndex;
@@ -104,11 +214,21 @@ class GameController extends ChangeNotifier {
         if (guesserId == myPlayerId) {
           lastPointsEarned = points;
         }
+        // Scores are broadcast per guess, so keep the live list in step —
+        // otherwise the in-game score badge reads 0 for the whole game.
+        final i = _players.indexWhere((p) => p.id == guesserId);
+        if (i != -1) {
+          _players[i] = _players[i].copyWith(score: _players[i].score + points);
+        }
+      case PhotosUpdated(:final players):
+        _players
+          ..clear()
+          ..addAll(players);
       case GameFinished(:final rankings):
-        finalRankings = rankings;
+        _finalRankings = rankings;
         phase = GamePhase.finished;
       case RoomReset(:final players):
-        this.players
+        _players
           ..clear()
           ..addAll(players);
         roundIndex = 0;
@@ -117,7 +237,7 @@ class GameController extends ChangeNotifier {
         revealedOwnerId = null;
         hasGuessedThisRound = false;
         lastPointsEarned = null;
-        finalRankings = [];
+        _finalRankings = const [];
         phase = GamePhase.lobby;
       case UnknownEvent():
         break;
@@ -125,27 +245,27 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Uploads a single photo (bytes already read) for the local player.
-  Future<void> uploadPhoto(
-    Uint8List bytes, {
-    String filename = 'photo.jpg',
-  }) async {
-    await api.uploadPhoto(roomCode!, myPlayerId!, bytes, filename: filename);
-  }
-
   /// Batch-uploads photos for the local player. Each image is sent as its own
   /// multipart call because the backend accepts one photo per request.
-  /// Returns the number successfully uploaded.
+  ///
+  /// A photo that fails is skipped rather than aborting the batch: these are
+  /// full-resolution camera-roll originals, and one oversized asset shouldn't
+  /// cost the player the rest of their set. Returns how many landed.
   Future<int> uploadPhotos(List<Uint8List> photos) async {
+    final s = session;
     var uploaded = 0;
     for (var i = 0; i < photos.length; i++) {
-      await api.uploadPhoto(
-        roomCode!,
-        myPlayerId!,
-        photos[i],
-        filename: 'photo_$i.jpg',
-      );
-      uploaded++;
+      try {
+        await api.uploadPhoto(
+          s.roomCode,
+          s.playerId,
+          photos[i],
+          filename: 'photo_$i.jpg',
+        );
+        uploaded++;
+      } on Exception {
+        // Skip this one; the rest of the batch still counts.
+      }
     }
     return uploaded;
   }
@@ -153,8 +273,8 @@ class GameController extends ChangeNotifier {
   /// Host starts the game.
   Future<void> startGame({int totalRounds = 5, int roundSeconds = 10}) async {
     await api.startGame(
-      roomCode!,
-      hostId: myPlayerId!,
+      session.roomCode,
+      hostId: session.playerId,
       totalRounds: totalRounds,
       roundSeconds: roundSeconds,
     );
@@ -162,25 +282,36 @@ class GameController extends ChangeNotifier {
   }
 
   /// Host resets the room back to the lobby so the same group can play again.
-  Future<void> resetRoom() async {
-    await api.resetRoom(roomCode!, hostId: myPlayerId!);
-  }
+  Future<void> resetRoom() =>
+      api.resetRoom(session.roomCode, hostId: session.playerId);
 
   /// Submit a guess for the current round.
-  Future<void> guess(String guessedOwnerId, int secondsLeft) async {
+  ///
+  /// The lock is applied optimistically so the UI can respond immediately, and
+  /// rolled back if the call fails — otherwise a transient error would lock the
+  /// player out of the round with no way to retry.
+  Future<void> guess(String guessedOwnerId) async {
     if (hasGuessedThisRound) return;
     hasGuessedThisRound = true;
     notifyListeners();
-    await api.submitGuess(
-      roomCode!,
-      guesserId: myPlayerId!,
-      guessedOwnerId: guessedOwnerId,
-      secondsLeft: secondsLeft,
-    );
+    try {
+      await api.submitGuess(
+        session.roomCode,
+        guesserId: session.playerId,
+        guessedOwnerId: guessedOwnerId,
+        roundIndex: roundIndex,
+      );
+    } catch (_) {
+      hasGuessedThisRound = false;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   @override
   void dispose() {
+    // Cancel before closing: a cancelled subscription never delivers onDone,
+    // so normal teardown can't trip the connection-lost banner.
     _sub?.cancel();
     _socket?.close();
     api.close();

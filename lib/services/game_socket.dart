@@ -5,11 +5,15 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
 import '../models/game_models.dart';
 
+/// Opens a live game socket. Injected into [GameController] so tests can
+/// substitute a fake without touching the network.
+typedef GameSocketFactory = GameSocket Function(String code, String playerId);
+
 /// Wraps the game WebSocket and exposes a typed [Stream] of [GameEvent]s.
 ///
 /// Connect with a room code and the player's id; the backend pushes events
-/// (player_joined, round_started, round_revealed, guess_result, game_finished)
-/// which we decode into [GameEvent] objects.
+/// (player_joined, round_started, round_revealed, guess_result, game_finished,
+/// room_reset) which we decode into [GameEvent] objects.
 class GameSocket {
   final WebSocketChannel _channel;
 
@@ -23,10 +27,14 @@ class GameSocket {
   }
 
   /// Decoded events from the server.
-  Stream<GameEvent> get events => _channel.stream.map((raw) {
-        final json = jsonDecode(raw as String) as Map<String, dynamic>;
-        return GameEvent.fromJson(json);
-      });
+  ///
+  /// Non-text frames are filtered out rather than throwing: the backend only
+  /// ever sends JSON text, so a binary frame is noise, not a fatal error.
+  Stream<GameEvent> get events => _channel.stream
+      .where((raw) => raw is String)
+      .map((raw) => GameEvent.fromJson(
+            jsonDecode(raw as String) as Map<String, dynamic>,
+          ));
 
-  void close() => _channel.sink.close();
+  Future<void> close() => _channel.sink.close();
 }

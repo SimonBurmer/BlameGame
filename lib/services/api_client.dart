@@ -27,10 +27,32 @@ class ApiClient {
       : _http = httpClient ?? http.Client(),
         baseUrl = baseUrl ?? apiBase;
 
+  /// Every call is bounded: a backend that accepts the connection but never
+  /// responds (cold start, half-open socket after a network switch) would
+  /// otherwise hang the UI on a spinner with no way to cancel.
+  static const Duration _timeout = Duration(seconds: 10);
+
   Uri _uri(String path, [Map<String, dynamic>? query]) =>
       Uri.parse('$baseUrl$path').replace(
         queryParameters: query?.map((k, v) => MapEntry(k, '$v')),
       );
+
+  /// POST a JSON body and decode the response. Shared by every JSON endpoint.
+  Future<Map<String, dynamic>> _postJson(
+    String path, [
+    Map<String, dynamic>? body,
+  ]) async {
+    final resp = await _http
+        .post(
+          _uri(path),
+          headers: body == null
+              ? null
+              : const {'Content-Type': 'application/json'},
+          body: body == null ? null : jsonEncode(body),
+        )
+        .timeout(_timeout);
+    return _decode(resp);
+  }
 
   Map<String, dynamic> _decode(http.Response resp) {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -40,23 +62,19 @@ class ApiClient {
   }
 
   /// Create a new room; returns its join code.
-  Future<String> createRoom() async {
-    final resp = await _http.post(_uri('/rooms'));
-    return _decode(resp)['code'] as String;
-  }
+  Future<String> createRoom() async =>
+      (await _postJson('/rooms'))['code'] as String;
 
   /// Join a room by code; returns (playerId, isHost).
   Future<({String playerId, bool isHost})> joinRoom(
     String code,
     String name,
   ) async {
-    final resp = await _http.post(
-      _uri('/rooms/$code/join'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'name': name}),
+    final body = await _postJson('/rooms/$code/join', {'name': name});
+    return (
+      playerId: body['player_id'] as String,
+      isHost: body['is_host'] as bool,
     );
-    final body = _decode(resp);
-    return (playerId: body['player_id'] as String, isHost: body['is_host'] as bool);
   }
 
   /// Upload a photo owned by [ownerId]. Returns the stored photo's relative URL.
@@ -75,22 +93,21 @@ class ApiClient {
         filename: filename,
         contentType: MediaType('image', 'jpeg'),
       ));
-    final streamed = await _http.send(request);
+    final streamed = await _http.send(request).timeout(_timeout);
     final resp = await http.Response.fromStream(streamed);
     return _decode(resp)['url'] as String;
   }
 
-  /// Fetch the current room snapshot (players, state, rounds).
-  Future<({String state, List<GamePlayer> players, int roundSeconds})> getRoom(
+  /// Fetch the current room snapshot (players, round length).
+  Future<({List<GamePlayer> players, int roundSeconds})> getRoom(
     String code,
   ) async {
-    final resp = await _http.get(_uri('/rooms/$code'));
+    final resp = await _http.get(_uri('/rooms/$code')).timeout(_timeout);
     final body = _decode(resp);
     final players = (body['players'] as List<dynamic>)
         .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
         .toList();
     return (
-      state: body['state'] as String,
       players: players,
       roundSeconds: (body['round_seconds'] as num).toInt(),
     );
@@ -103,46 +120,42 @@ class ApiClient {
     int totalRounds = 5,
     int roundSeconds = 10,
   }) async {
-    final resp = await _http.post(
-      _uri('/rooms/$code/start'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'host_id': hostId,
-        'total_rounds': totalRounds,
-        'round_seconds': roundSeconds,
-      }),
-    );
-    _decode(resp);
+    await _postJson('/rooms/$code/start', {
+      'host_id': hostId,
+      'total_rounds': totalRounds,
+      'round_seconds': roundSeconds,
+    });
   }
 
   /// Submit a guess; returns points earned.
+  ///
+  /// [roundIndex] is the round the player was answering. The server rejects it
+  /// if the round has already rolled over, so a guess in flight across the
+  /// boundary isn't scored against a photo the player never saw.
+  ///
+  /// How fast the guess was is measured by the server from its own round
+  /// deadline — the client does not report it, so a wrong device clock can't
+  /// cost points and a patched client can't mint them.
+  ///
+  /// Callers generally ignore the return value and rely on the broadcast
+  /// `guess_result` instead, since every client needs that echo anyway.
   Future<int> submitGuess(
     String code, {
     required String guesserId,
     required String guessedOwnerId,
-    required int secondsLeft,
+    required int roundIndex,
   }) async {
-    final resp = await _http.post(
-      _uri('/rooms/$code/guess'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'guesser_id': guesserId,
-        'guessed_owner_id': guessedOwnerId,
-        'seconds_left': secondsLeft,
-      }),
-    );
-    return (_decode(resp)['points'] as num).toInt();
+    final body = await _postJson('/rooms/$code/guess', {
+      'guesser_id': guesserId,
+      'guessed_owner_id': guessedOwnerId,
+      'round_index': roundIndex,
+    });
+    return (body['points'] as num).toInt();
   }
 
   /// Host resets the room back to the lobby for a new round.
-  Future<void> resetRoom(String code, {required String hostId}) async {
-    final resp = await _http.post(
-      _uri('/rooms/$code/reset'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'host_id': hostId}),
-    );
-    _decode(resp);
-  }
+  Future<void> resetRoom(String code, {required String hostId}) =>
+      _postJson('/rooms/$code/reset', {'host_id': hostId});
 
   void close() => _http.close();
 }

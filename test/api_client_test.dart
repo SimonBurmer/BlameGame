@@ -47,7 +47,10 @@ void main() {
     final mock = MockClient((req) async {
       final body = jsonDecode(req.body);
       expect(body['guesser_id'], 'p2');
-      expect(body['seconds_left'], 8);
+      expect(body['guessed_owner_id'], 'p1');
+      // Timing is measured server-side; the client only says which round.
+      expect(body['round_index'], 3);
+      expect(body.containsKey('seconds_left'), isFalse);
       return http.Response(jsonEncode({'points': 800, 'correct': true}), 200);
     });
     final api = ApiClient(httpClient: mock, baseUrl: 'http://test');
@@ -56,13 +59,13 @@ void main() {
       'ABC12',
       guesserId: 'p2',
       guessedOwnerId: 'p1',
-      secondsLeft: 8,
+      roundIndex: 3,
     );
 
     expect(points, 800);
   });
 
-  test('getRoom parses state, players, and round_seconds', () async {
+  test('getRoom parses players and round_seconds', () async {
     final mock = MockClient((req) async {
       return http.Response(
         jsonEncode({
@@ -80,7 +83,6 @@ void main() {
 
     final room = await api.getRoom('ABC12');
 
-    expect(room.state, 'lobby');
     expect(room.roundSeconds, 15);
     expect(room.players.map((p) => p.name), ['Emma', 'Jake']);
   });

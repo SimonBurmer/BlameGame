@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/game_models.dart';
 import '../state/game_controller.dart';
+import '../ui/connection_banner.dart';
+import '../ui/error_text.dart';
+import '../ui/result_banner.dart';
+import '../ui/player_cosmetics.dart';
 import 'results_screen.dart';
 
 class GameScreen extends StatefulWidget {
@@ -24,6 +28,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   int _shownRound = -1;
   bool _navigated = false;
   String? _myGuessedPlayerId;
+  GamePhase? _lastPhase;
 
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
@@ -44,9 +49,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    c.removeListener(_onChange);
     _displayTimer?.cancel();
     _shakeController.dispose();
-    c.removeListener(_onChange);
     super.dispose();
   }
 
@@ -68,12 +73,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _syncToRound();
     }
 
-    // Round revealed -> stop the timer, shake if we were wrong.
-    if (c.phase == GamePhase.revealed) {
+    // Round revealed -> stop the timer, shake if we were wrong. Gate on the
+    // transition: _onChange fires for every event, including other players'
+    // results, and the banner shouldn't re-shake each time one lands.
+    if (c.phase == GamePhase.revealed && _lastPhase != GamePhase.revealed) {
       _displayTimer?.cancel();
       final wrong = c.hasGuessedThisRound && (c.lastPointsEarned ?? 0) == 0;
       if (wrong) _shakeController.forward(from: 0);
     }
+    _lastPhase = c.phase;
 
     setState(() {});
   }
@@ -83,10 +91,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _timeExpired = false;
     _displayTimer?.cancel();
     _computeTimeLeft();
-    _displayTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => setState(_computeTimeLeft),
-    );
+    _displayTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(_computeTimeLeft);
+    });
     setState(() {});
   }
 
@@ -105,10 +116,22 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _guess(GamePlayer player) {
-    if (c.hasGuessedThisRound || _timeExpired || c.phase != GamePhase.inRound) return;
-    _myGuessedPlayerId = player.id;
-    c.guess(player.id, _timeLeft);
+  Future<void> _guess(GamePlayer player) async {
+    if (c.hasGuessedThisRound || _timeExpired || c.phase != GamePhase.inRound) {
+      return;
+    }
+    setState(() => _myGuessedPlayerId = player.id);
+    try {
+      await c.guess(player.id);
+    } on Exception catch (e) {
+      // The controller has already released the round lock; clear the local
+      // selection too so the player can try again, and say what happened.
+      if (!mounted) return;
+      setState(() => _myGuessedPlayerId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Guess failed: ${friendlyError(e)}')),
+      );
+    }
   }
 
   @override
@@ -125,6 +148,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         child: SafeArea(
           child: Column(
             children: [
+              ConnectionBanner(controller: c),
               _topBar(),
               const SizedBox(height: 8),
               _timerBar(),
@@ -232,6 +256,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   Widget _photoArea() {
     final photo = c.currentPhoto;
+    // Uploads are full-resolution camera originals (~4032x3024 = ~48MB
+    // decoded). Decoding at display size instead keeps a whole game inside
+    // the image cache rather than thrashing it or OOMing on smaller devices.
+    final decodeWidth =
+        ((MediaQuery.sizeOf(context).width - 48) *
+                MediaQuery.devicePixelRatioOf(context))
+            .round();
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
@@ -245,6 +276,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               '$apiBase${photo.url}',
               fit: BoxFit.cover,
               width: double.infinity,
+              cacheWidth: decodeWidth,
+              semanticLabel: 'Photo for round ${c.roundIndex + 1}',
               errorBuilder: (context, error, stack) => const Center(
                 child: Icon(
                   Icons.broken_image,
@@ -267,88 +300,26 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _instantResultBanner() {
     final points = c.lastPointsEarned;
     if (points == null) return const SizedBox.shrink();
-    final correct = points > 0;
-    final color = correct ? Colors.greenAccent : const Color(0xFFE94560);
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            correct ? Icons.check_circle : Icons.cancel,
-            color: color,
-            size: 28,
-          ),
-          const SizedBox(width: 10),
-          Text(
-            correct ? 'Correct! +$points points' : 'Guess submitted',
-            style: TextStyle(
-              color: color,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
+    return ResultBanner(
+      correct: points > 0,
+      message: points > 0 ? 'Correct! +$points points' : 'Guess submitted',
     );
   }
 
+  /// The round reveal: names the owner, and shakes on a wrong guess.
   Widget _resultBanner() {
     final correct = (c.lastPointsEarned ?? 0) > 0;
-    final ownerId = c.revealedOwnerId;
-    String ownerName = 'someone';
-    for (final p in c.players) {
-      if (p.id == ownerId) ownerName = p.name;
-    }
     return AnimatedBuilder(
       animation: _shakeAnimation,
       builder: (context, child) {
         final shake = correct ? 0.0 : sin(_shakeAnimation.value * 3 * pi) * 8;
         return Transform.translate(offset: Offset(shake, 0), child: child);
       },
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: correct
-              ? Colors.greenAccent.withValues(alpha: 0.15)
-              : const Color(0xFFE94560).withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: correct
-                ? Colors.greenAccent.withValues(alpha: 0.4)
-                : const Color(0xFFE94560).withValues(alpha: 0.4),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              correct ? Icons.check_circle : Icons.cancel,
-              color: correct ? Colors.greenAccent : const Color(0xFFE94560),
-              size: 28,
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                correct
-                    ? 'Correct! +${c.lastPointsEarned} points'
-                    : "It was $ownerName's photo",
-                style: TextStyle(
-                  color: correct ? Colors.greenAccent : const Color(0xFFE94560),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        ),
+      child: ResultBanner(
+        correct: correct,
+        message: correct
+            ? 'Correct! +${c.lastPointsEarned} points'
+            : "It was ${c.revealedOwnerName}'s photo",
       ),
     );
   }

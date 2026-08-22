@@ -59,6 +59,13 @@ class Room:
     current_round: int = 0
     state: RoomState = RoomState.LOBBY
     round_seconds: int = 10
+    # Hardcore mode: photos are sampled and uploaded blind, with no preview or
+    # reshuffle. Set once at room creation and never mutated — photos are
+    # uploaded in the lobby before the game starts, so a flag carried on the
+    # start call would arrive after they are already on disk, and a mutable
+    # setting would let a host flip to hardcore after players had already
+    # preview-approved what they shared.
+    hardcore: bool = False
     # Bumped every time a game is started or reset. A RoundDriver captures it
     # at startup and re-checks after each await: the room is mutable shared
     # state, and an await is the only point another coroutine can change it.

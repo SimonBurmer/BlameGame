@@ -251,6 +251,18 @@ def test_reset_keeps_photos_for_the_next_round():
     assert len(room.photos) == 2
 
 
+def test_reset_bumps_the_epoch():
+    room, emma, jake = started_room()
+    advance_round(room)
+    before = room.epoch
+
+    reset_room(room)
+
+    # A rematch is a new game: any RoundDriver still alive from the finished
+    # one must see a moved epoch and bow out instead of driving it.
+    assert room.epoch > before
+
+
 def test_reset_keeps_host():
     room, emma, jake = started_room()
     advance_round(room)

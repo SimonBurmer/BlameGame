@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same PR cancels the older run: the old result is stale
+# anyway, and the free runner minutes are better spent on the current commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: pytest
+
+  backend-build:
+    name: Backend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: backend/.python-version
+      # Railway builds with Nixpacks, which we can't run here. The equivalent
+      # check is that a clean install of the *runtime* deps (no dev extras)
+      # succeeds and the app imports — that catches a missing dependency or an
+      # import error before it reaches the deploy.
+      - run: pip install ./backend
+      - run: python -c "import app.main"
+        working-directory: backend
+
+  flutter-test:
+    name: Flutter tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to the version used locally. pubspec.yaml only constrains the
+      # Dart SDK, so there is no Flutter version to read from a file.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.41.7
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  deploy:
+    needs: [backend-test, backend-build, flutter-test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g @railway/cli
+      # Uploads backend/ as the build root, so the Railway service must have an
+      # empty Root Directory. Setting it to "backend" as well nests the path
+      # twice and fails with "Failed to read app source directory".
+      - run: railway up --service "$RAILWAY_SERVICE" --ci
+        working-directory: backend
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE }}

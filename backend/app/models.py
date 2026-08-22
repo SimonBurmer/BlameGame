@@ -58,6 +58,13 @@ class Room:
     current_round: int = 0
     state: RoomState = RoomState.LOBBY
     round_seconds: int = 10
+    # Bumped every time a game is started or reset. A RoundDriver captures it
+    # at startup and re-checks after each await: the room is mutable shared
+    # state, and an await is the only point another coroutine can change it.
+    # Comparing the epoch tells a driver its game is over and it must stop,
+    # which a state/round check alone can't (a reset-then-restart looks
+    # identical to the round it was already driving).
+    epoch: int = 0
 
     def player_by_id(self, player_id: str) -> Optional[Player]:
         for p in self.players:

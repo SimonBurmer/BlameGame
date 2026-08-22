@@ -11,7 +11,7 @@ Run async tests via anyio's pytest plugin (installed with FastAPI). The
 
 import pytest
 
-from app.game import Room, add_player, add_photo, start_game
+from app.game import Room, add_player, add_photo, reset_room, start_game
 from app.models import RoomState
 from app.timer import REVEAL_SECONDS, RoundDriver
 
@@ -220,3 +220,110 @@ async def test_driver_stops_if_the_room_moved_on_while_it_waited():
 
     # It must not reveal a round it is no longer timing.
     assert events == ["round_started"]
+
+
+# --- concurrent mutation of shared Room state ------------------------------
+#
+# This is asyncio, so only an await can interleave. The driver's injected
+# `sleep` IS that await point: mutating the room inside it reproduces exactly
+# what a REST handler does when it runs while the driver is sleeping.
+
+def _finish_and_restart(room, total_rounds: int = 2) -> None:
+    """What POST /reset + POST /start do to a room between two awaits."""
+    room.state = RoomState.FINISHED
+    reset_room(room)
+    start_game(room, total_rounds=total_rounds, round_seconds=0)
+
+
+@pytest.mark.anyio
+async def test_driver_does_not_advance_a_room_restarted_during_the_reveal_hold():
+    # Reset is refused mid-round, but the room can finish and be restarted
+    # while the previous driver sleeps out its reveal hold. Advancing then
+    # would skip the new game's first round.
+    room = make_started_room(total_rounds=3, round_seconds=0)
+    events = []
+    restarted = False
+
+    async def sleep_then_restart(seconds: float) -> None:
+        nonlocal restarted
+        if seconds == REVEAL_SECONDS and not restarted:
+            restarted = True
+            _finish_and_restart(room, total_rounds=3)
+
+    driver = RoundDriver(
+        room,
+        sleep=sleep_then_restart,
+        on_event=lambda e: events.append(e["type"]),
+    )
+    await driver.run()
+
+    # The stale driver bows out; the fresh game is untouched at round 0.
+    assert room.current_round == 0
+    assert room.state is RoomState.IN_ROUND
+    assert events == ["round_started", "round_revealed"]
+
+
+@pytest.mark.anyio
+async def test_stale_driver_does_not_drive_a_restarted_room():
+    # A restart spawns a second driver while the first may still be alive.
+    # Only the driver owning the current epoch may advance rounds.
+    room = make_started_room(total_rounds=2, round_seconds=0)
+    stale = RoundDriver(room, sleep=_noop_sleep, on_event=lambda e: None)
+
+    _finish_and_restart(room, total_rounds=2)
+
+    await stale.run()
+    assert room.current_round == 0
+    assert room.state is RoomState.IN_ROUND
+
+    fresh_events = []
+    fresh = RoundDriver(
+        room, sleep=_noop_sleep, on_event=lambda e: fresh_events.append(e["type"])
+    )
+    await fresh.run()
+    assert fresh_events == [
+        "round_started",
+        "round_revealed",
+        "round_started",
+        "round_revealed",
+        "game_finished",
+    ]
+
+
+@pytest.mark.anyio
+async def test_stale_driver_does_not_emit_game_finished_for_a_restarted_room():
+    room = make_started_room(total_rounds=1, round_seconds=0)
+    events = []
+    stale = RoundDriver(room, sleep=_noop_sleep, on_event=lambda e: events.append(e))
+
+    _finish_and_restart(room, total_rounds=1)
+
+    await stale.run()
+    # Announcing rankings for a game that just restarted would drop every
+    # client straight to the results screen.
+    assert events == []
+
+
+@pytest.mark.anyio
+async def test_driver_stops_polling_a_round_it_no_longer_owns():
+    # A restart during the wait must end the poll loop immediately, not leave
+    # the stale driver ticking out the remaining 10s of a dead round.
+    room = make_started_room(total_rounds=2, round_seconds=10)
+    steps = []
+    restarted = False
+
+    async def sleep_then_restart(seconds: float) -> None:
+        nonlocal restarted
+        steps.append(seconds)
+        if not restarted:
+            restarted = True
+            _finish_and_restart(room, total_rounds=2)
+
+    driver = RoundDriver(room, sleep=sleep_then_restart, on_event=lambda e: None)
+    await driver.run()
+
+    # One poll, then it notices the epoch moved and bails -- not 50 polls.
+    assert steps == [0.2]
+    # And the freshly restarted game is left exactly where it started.
+    assert room.current_round == 0
+    assert room.state is RoomState.IN_ROUND

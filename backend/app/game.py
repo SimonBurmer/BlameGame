@@ -98,6 +98,9 @@ def start_game(room: Room, *, total_rounds: int = 5, round_seconds: int = 10) ->
     room.current_round = 0
     room.round_seconds = round_seconds
     room.state = RoomState.IN_ROUND
+    # New game, new epoch: any driver still sleeping on the previous one must
+    # not wake up and drive this game too.
+    room.epoch += 1
 
 
 def current_photo(room: Room) -> Photo:
@@ -195,3 +198,4 @@ def reset_room(room: Room) -> None:
     room.rounds = []
     room.current_round = 0
     room.state = RoomState.LOBBY
+    room.epoch += 1

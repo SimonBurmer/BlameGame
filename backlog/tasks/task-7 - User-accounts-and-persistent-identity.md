@@ -4,14 +4,14 @@ title: User accounts and persistent identity
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-22 18:03'
+updated_date: '2026-08-18 14:43'
 labels:
   - frontend
   - backend
   - auth
 milestone: m-1
 dependencies: []
-priority: low
+priority: medium
 ordinal: 7000
 ---
 

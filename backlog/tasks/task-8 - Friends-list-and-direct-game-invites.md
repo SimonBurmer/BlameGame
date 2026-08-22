@@ -4,7 +4,7 @@ title: Friends list and direct game invites
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-22 18:03'
+updated_date: '2026-08-18 14:43'
 labels:
   - frontend
   - backend
@@ -12,7 +12,7 @@ labels:
 milestone: m-1
 dependencies:
   - TASK-7
-priority: low
+priority: medium
 ordinal: 8000
 ---
 

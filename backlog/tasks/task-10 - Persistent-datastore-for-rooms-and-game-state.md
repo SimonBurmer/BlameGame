@@ -4,14 +4,14 @@ title: Persistent datastore for rooms and game state
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 18:03'
+updated_date: '2026-08-18 14:43'
 labels:
   - backend
   - infra
   - persistence
 milestone: m-2
 dependencies: []
-priority: low
+priority: medium
 ordinal: 10000
 ---
 

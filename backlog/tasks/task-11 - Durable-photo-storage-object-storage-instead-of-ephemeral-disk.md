@@ -4,14 +4,14 @@ title: Durable photo storage (object storage instead of ephemeral disk)
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 18:03'
+updated_date: '2026-08-18 14:43'
 labels:
   - backend
   - infra
   - photos
 milestone: m-2
 dependencies: []
-priority: low
+priority: medium
 ordinal: 11000
 ---
 

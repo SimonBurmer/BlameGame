@@ -4,13 +4,12 @@ title: Close a kicked player's open WebSocket immediately
 status: In Progress
 assignee: []
 created_date: '2026-08-22 15:34'
-updated_date: '2026-08-22 18:07'
+updated_date: '2026-08-22 17:59'
 labels:
   - backend
   - security
   - realtime
 dependencies: []
-priority: high
 ordinal: 45000
 ---
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/game_models.dart';
 import '../state/game_controller.dart';
+import '../theme/app_theme.dart';
 import '../ui/connection_banner.dart';
 import '../ui/error_text.dart';
 import '../ui/result_banner.dart';
@@ -155,7 +156,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               const SizedBox(height: 16),
               Expanded(child: _photoArea()),
               const SizedBox(height: 16),
-              if (c.phase == GamePhase.revealed) _resultBanner(),
+              if (c.phase == GamePhase.revealed) ...[
+                _resultBanner(),
+                _standingsStrip(),
+              ],
               if (c.phase == GamePhase.inRound && c.hasGuessedThisRound)
                 _instantResultBanner(),
               if (c.phase == GamePhase.inRound) _guessButtons(),
@@ -320,6 +324,65 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         message: correct
             ? 'Correct! +${c.lastPointsEarned} points'
             : "It was ${c.revealedOwnerName}'s photo",
+      ),
+    );
+  }
+
+  /// Between-rounds scoreboard, shown for the server's reveal hold alongside
+  /// the result banner. Rows are rendered in the order the server sent them —
+  /// scoring is server-authoritative and the client never re-sorts.
+  Widget _standingsStrip() {
+    final standings = c.standings;
+    if (standings.isEmpty) return const SizedBox.shrink();
+    final colors = context.colors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < standings.length; i++)
+            _standingsRow(standings[i], i + 1, colors),
+        ],
+      ),
+    );
+  }
+
+  Widget _standingsRow(GamePlayer player, int rank, AppColors colors) {
+    final isMe = player.id == c.myPlayerId;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 26,
+            child: Text(
+              '$rank',
+              style: TextStyle(
+                color: rank == 1 ? colors.gold : colors.onSurfaceFaint,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Icon(player.avatar, color: player.color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              player.name,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.onSurfaceStrong,
+                fontWeight: isMe ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+          ),
+          Text(
+            '${player.score}',
+            style: TextStyle(
+              color: rank == 1 ? colors.gold : colors.onSurfaceStrong,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,0 +1,162 @@
+import 'dart:typed_data';
+
+import 'package:blame_game/screens/lobby_screen.dart';
+import 'package:blame_game/services/photo_sampler.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'support/pump.dart';
+
+/// A 1x1 PNG — [Image.memory] needs bytes a real decoder accepts.
+final _png = Uint8List.fromList([
+  0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+  0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+  0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+  0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+]);
+
+/// Hands out canned batches instead of touching the camera roll, and records
+/// the exclude sets it was asked for.
+class FakeSampler implements PhotoSampler {
+  final List<List<String>> batches;
+  final List<Set<String>> excludes = [];
+  int calls = 0;
+
+  FakeSampler(this.batches);
+
+  @override
+  Future<List<SampledPhoto>> sampleRandomPhotos({
+    required int count,
+    Set<String> exclude = const {},
+  }) async {
+    // Copy: the sheet passes its live "already seen" set, which keeps growing.
+    excludes.add({...exclude});
+    final ids = calls < batches.length ? batches[calls] : <String>[];
+    calls++;
+    return [
+      for (final id in ids)
+        SampledPhoto(id: id, thumbnail: _png, bytes: Uint8List.fromList([1])),
+    ];
+  }
+}
+
+/// The ADD PHOTOS button shows an infinite spinner while the preview is open,
+/// so `pumpAndSettle` never returns — pump a fixed number of frames instead.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 6; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Future<void> _openPreview(WidgetTester tester, FakeSampler sampler) async {
+  final h = await harness();
+  await pumpScreen(
+    tester,
+    LobbyScreen(controller: h.controller, sampler: sampler),
+  );
+  await tester.tap(find.text('ADD PHOTOS'));
+  await settle(tester);
+}
+
+void main() {
+  testWidgets('previews the sampled photos before anything is uploaded',
+      (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b', 'c'],
+    ]);
+    await _openPreview(tester, sampler);
+
+    expect(find.text('THESE PHOTOS?'), findsOneWidget);
+    expect(find.byType(Image), findsNWidgets(3));
+    expect(find.text('USE THESE'), findsOneWidget);
+    expect(find.text('RESHUFFLE'), findsOneWidget);
+  });
+
+  testWidgets('reshuffle asks for a fresh batch, excluding what was shown',
+      (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]);
+    await _openPreview(tester, sampler);
+
+    await tester.tap(find.text('RESHUFFLE'));
+    await settle(tester);
+
+    expect(sampler.calls, 2);
+    expect(sampler.excludes.first, isEmpty);
+    expect(sampler.excludes.last, {'a', 'b'});
+    // Still previewing, still nothing uploaded.
+    expect(find.text('THESE PHOTOS?'), findsOneWidget);
+  });
+
+  testWidgets('a second reshuffle excludes both earlier batches',
+      (tester) async {
+    final sampler = FakeSampler([
+      ['a'],
+      ['b'],
+      ['c'],
+    ]);
+    await _openPreview(tester, sampler);
+
+    await tester.tap(find.text('RESHUFFLE'));
+    await settle(tester);
+    await tester.tap(find.text('RESHUFFLE'));
+    await settle(tester);
+
+    expect(sampler.excludes.last, {'a', 'b'});
+  });
+
+  testWidgets('an empty reshuffle keeps the current photos', (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b'],
+      <String>[],
+    ]);
+    await _openPreview(tester, sampler);
+
+    await tester.tap(find.text('RESHUFFLE'));
+    await settle(tester);
+
+    expect(find.text('No other photos to shuffle in'), findsOneWidget);
+    expect(find.byType(Image), findsNWidgets(2));
+  });
+
+  testWidgets('confirming uploads the previewed photos', (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b'],
+    ]);
+    final h = await harness();
+    await pumpScreen(
+      tester,
+      LobbyScreen(controller: h.controller, sampler: sampler),
+    );
+    expect(h.http.countFor('/photos'), 0);
+
+    await tester.tap(find.text('ADD PHOTOS'));
+    await settle(tester);
+    await tester.tap(find.text('USE THESE'));
+    await settle(tester);
+
+    expect(h.http.countFor('/photos'), 2);
+  });
+
+  testWidgets('dismissing the preview uploads nothing', (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b'],
+    ]);
+    final h = await harness();
+    await pumpScreen(
+      tester,
+      LobbyScreen(controller: h.controller, sampler: sampler),
+    );
+
+    await tester.tap(find.text('ADD PHOTOS'));
+    await settle(tester);
+    Navigator.of(tester.element(find.text('THESE PHOTOS?'))).pop();
+    await settle(tester);
+
+    expect(h.http.countFor('/photos'), 0);
+  });
+}

@@ -28,7 +28,7 @@ Layered: `config → models → services → state → screens`, with `theme/` a
 Pure logic under thin I/O layers:
 - `game.py`, `scoring.py` — pure game rules + scoring (well unit-tested).
 - `main.py` — FastAPI routes (REST + one WS route `/ws/{code}/{player_id}`).
-- `store.py` — process-wide in-memory `GameStore` singleton (`dict[code→Room]`). **State is lost on restart and can't be shared across replicas.**
+- `store.py` — process-wide in-memory `GameStore` singleton (`dict[code→Room]`). **State is lost on restart and can't be shared across replicas.** Rooms carry `last_active` and are evicted after `ROOM_TTL_SECONDS` (6h) idle by a **lazy sweep on create/lookup** — no background task, since only a request can grow the store. `time_fn`/`on_evict` are injectable; `main.py` wires `on_evict` to delete `uploads/{code}/`, refusing any code that resolves outside `UPLOAD_DIR`. `DELETE /rooms/{code}?host_id=` ends a room explicitly.
 - `connection.py` — `ConnectionManager`, broadcasts events to a room's sockets.
 - `timer.py` — `RoundDriver` drives round timing (sleep injectable for tests). It holds on the reveal for `REVEAL_SECONDS` before advancing; without that pause `round_revealed` and the next `round_started` land in the same tick and players never see whose photo it was. It re-checks the room before revealing, so a round that moved underneath it isn't announced with the wrong photo.
 - Photos are written to local disk under `uploads/{code}/` (ephemeral on Railway).
@@ -48,7 +48,7 @@ flutter run                      # needs a simulator/device
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                           # currently 73 tests
+pytest                           # currently 85 tests
 ruff check .                     # pyflakes (F) only; configured in backend/pyproject.toml
 ```
 

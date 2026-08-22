@@ -8,6 +8,7 @@ Written for Python 3.9 (uses typing.Optional/List, not `X | None`).
 from __future__ import annotations
 
 import enum
+import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -65,6 +66,10 @@ class Room:
     # which a state/round check alone can't (a reset-then-restart looks
     # identical to the round it was already driving).
     epoch: int = 0
+    # Epoch seconds of the last time anyone touched this room. The store bumps
+    # it on every lookup and evicts rooms that go quiet, so abandoned rooms and
+    # their photos don't accumulate for the lifetime of the process.
+    last_active: float = field(default_factory=time.time)
 
     def player_by_id(self, player_id: str) -> Optional[Player]:
         for p in self.players:

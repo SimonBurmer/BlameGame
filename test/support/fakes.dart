@@ -77,6 +77,8 @@ class RecordingClient {
   final Object? guess;
   final Object? photos;
   final Object? reset;
+  final Object? leave;
+  final Object? kick;
 
   RecordingClient({
     this.join,
@@ -84,6 +86,8 @@ class RecordingClient {
     this.guess,
     this.photos,
     this.reset,
+    this.leave = const {'state': 'lobby', 'players': []},
+    this.kick = const {'state': 'lobby', 'players': []},
   });
 
   MockClient get client => MockClient((request) async {
@@ -95,6 +99,8 @@ class RecordingClient {
     if (path.endsWith('/join')) return join;
     if (path.endsWith('/guess')) return guess;
     if (path.endsWith('/reset')) return reset;
+    if (path.endsWith('/leave')) return leave;
+    if (path.endsWith('/kick')) return kick;
     if (path.contains('/photos')) return photos;
     return snapshot;
   }

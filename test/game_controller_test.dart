@@ -363,4 +363,98 @@ void main() {
       expect(uploaded, 2, reason: 'and reports how many actually landed');
     });
   });
+
+  group('leaving and kicking', () {
+    test('leaveRoom posts and closes the socket', () async {
+      final (c, socket, recording) = await joinedController();
+
+      await c.leaveRoom();
+
+      expect(recording.countEndingWith('/leave'), 1);
+      expect(c.hasLeftRoom, isTrue);
+      // Staying on the feed for a room we've left would surface as a bogus
+      // "lost connection" banner on the way out.
+      expect(socket.closed, isTrue);
+    });
+
+    test('kickPlayer posts the host id and the target', () async {
+      final (c, _, recording) = await joinedController();
+
+      await c.kickPlayer('p2');
+
+      final request = recording.requests.last as http.Request;
+      expect(request.url.path, endsWith('/kick'));
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['host_id'], 'me');
+      expect(body['player_id'], 'p2');
+    });
+
+    test('player_left for someone else just refreshes the roster', () async {
+      final (c, socket, _) = await joinedController();
+
+      socket.emit(PlayerLeft(
+        playerId: 'p2',
+        kicked: false,
+        players: [player(id: 'me', name: 'Emma', isHost: true)],
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(c.players.map((p) => p.id), ['me']);
+      expect(c.hasLeftRoom, isFalse);
+    });
+
+    test('player_left for me marks us out and names the reason', () async {
+      final (c, socket, _) = await joinedController();
+
+      socket.emit(PlayerLeft(
+        playerId: 'me',
+        kicked: true,
+        players: [player(id: 'p2', name: 'Jake', isHost: true)],
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(c.hasLeftRoom, isTrue);
+      expect(c.removedFromRoom, isNotNull);
+    });
+
+    test('leaving of my own accord carries no kicked reason', () async {
+      final (c, socket, _) = await joinedController();
+
+      socket.emit(PlayerLeft(
+        playerId: 'me',
+        kicked: false,
+        players: const [],
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(c.hasLeftRoom, isTrue);
+      expect(c.removedFromRoom, isNull);
+    });
+
+    test('inheriting the host role is picked up from the roster', () async {
+      // Join as a non-host, then watch the host leave.
+      final recording = RecordingClient(
+        join: {'player_id': 'me', 'is_host': false},
+        snapshot: _snapshot,
+      );
+      final socket = FakeGameSocket();
+      final c = GameController(
+        api: ApiClient(httpClient: recording.client, baseUrl: 'http://test'),
+        socketFactory: fakeSocketFactory(socket),
+      );
+      await c.joinByCode('ABC12', 'Emma');
+      expect(c.isHost, isFalse);
+
+      socket.emit(PlayerLeft(
+        playerId: 'p2',
+        kicked: false,
+        players: [player(id: 'me', name: 'Emma', isHost: true)],
+      ));
+      await Future<void>.delayed(Duration.zero);
+
+      // Trusting the join-time value would leave the room with no one able to
+      // start it.
+      expect(c.isHost, isTrue);
+    });
+  });
 }

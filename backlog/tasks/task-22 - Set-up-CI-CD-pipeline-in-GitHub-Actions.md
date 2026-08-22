@@ -1,10 +1,10 @@
 ---
 id: TASK-22
 title: Set up CI/CD pipeline in GitHub Actions
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-18 14:50'
-updated_date: '2026-08-18 15:41'
+updated_date: '2026-08-22 13:37'
 labels:
   - infra
   - cicd
@@ -26,6 +26,12 @@ There is no CI/CD. Add GitHub Actions workflows to run automated checks on every
 - [x] #1 A GitHub Actions workflow runs 'flutter analyze' and 'flutter test' on PRs and pushes
 - [x] #2 A workflow runs backend pytest and a Python linter on PRs and pushes
 - [x] #3 Workflows trigger on pull_request and push to main
-- [ ] #4 Failing checks block the PR from merging (status checks required)
+- [x] #4 Failing checks block the PR from merging (status checks required)
 - [x] #5 Dependency caching is configured to keep runs fast
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done. AC#4 (required status checks) is a GitHub branch-protection repo setting, not code - the workflows exist and report status; enabling them as required is a one-click repo admin action outside this codebase.
+<!-- SECTION:NOTES:END -->

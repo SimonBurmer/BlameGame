@@ -1,10 +1,10 @@
 ---
 id: TASK-42
 title: Preview and reshuffle sampled photos before upload
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 13:41'
-updated_date: '2026-08-22 13:41'
+updated_date: '2026-08-22 13:42'
 labels: []
 dependencies: []
 ordinal: 42000

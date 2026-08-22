@@ -88,11 +88,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const SizedBox(height: 20),
-                  const Icon(Icons.photo_library_rounded,
-                      size: 72, color: Colors.white),
+                  Image.asset('assets/branding/logo_mark.png',
+                      width: 96, height: 96),
                   const SizedBox(height: 16),
                   const Text(
-                    'PHOTO\nROULETTE',
+                    'BLAME\nGAME',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 44,

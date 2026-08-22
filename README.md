@@ -1,10 +1,11 @@
-# Photo Roulette 2
+# Blame Game
 
-This repository will contain a new version of the Photo Roulette app.
+Blame Game is a party game: everyone throws photos from their camera roll into a
+room, and each round you guess whose photo is on screen — faster guesses score more.
 
 ## Getting Started
 
-Photo Roulette 2 is being built with Flutter.
+Blame Game is being built with Flutter.
 
 ### First-time setup
 
@@ -50,12 +51,12 @@ flutter run               # fresh build; press "q" to fully quit a running sessi
 If the simulator still shows an old build, uninstall it first:
 
 ```sh
-xcrun simctl uninstall booted com.example.flutterApplication1
+xcrun simctl uninstall booted com.blamegame.app
 ```
 
 ### Testing multiplayer locally (two simulators)
 
-Photo Roulette needs 2+ players to start a game. To test that on one machine,
+Blame Game needs 2+ players to start a game. To test that on one machine,
 run the app on two simulators at once — one player creates the game and shares
 the code, the other joins with it.
 

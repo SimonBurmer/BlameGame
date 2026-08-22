@@ -4,12 +4,13 @@ title: Close a kicked player's open WebSocket immediately
 status: To Do
 assignee: []
 created_date: '2026-08-22 15:34'
-updated_date: '2026-08-22 15:34'
+updated_date: '2026-08-22 18:07'
 labels:
   - backend
   - security
   - realtime
 dependencies: []
+priority: high
 ordinal: 45000
 ---
 

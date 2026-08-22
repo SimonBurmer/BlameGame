@@ -39,7 +39,7 @@ Pure logic under thin I/O layers:
 ```sh
 flutter pub get
 flutter analyze
-flutter test                     # currently 56 tests
+flutter test                     # currently 57 tests
 flutter run                      # needs a simulator/device
 ```
 

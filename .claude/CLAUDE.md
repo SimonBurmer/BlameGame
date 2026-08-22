@@ -52,6 +52,24 @@ pytest                           # currently 73 tests
 ruff check .                     # pyflakes (F) only; configured in backend/pyproject.toml
 ```
 
+### Branding / app icon
+Every launcher icon is generated — never hand-edit the PNGs, regenerate them.
+```sh
+./scripts/generate-app-icons.sh   # iOS, Android (legacy + adaptive) and web, from the SVGs
+```
+- `assets/branding/app_icon.svg` is the source of truth. `logo_mark.svg` is the mark
+  with no background; `app_icon_foreground.svg` / `app_icon_background.svg` are the two
+  Android adaptive layers, the foreground inset to the 66% zone launchers mask to.
+- `scripts/rasterize-svg.swift` does the rasterizing. It exists because **AppKit is the
+  only SVG decoder on macOS** — ImageIO reports no SVG type at all — and because `sips`
+  can render the SVG but always writes an alpha channel, which the iOS AppIcon set is
+  not allowed to have. Drawing through an explicit `CGContext` is what makes the iOS
+  PNGs opaque without a lossy JPEG round-trip.
+- `logo_mark.png` (+ `2.0x/`, `3.0x/`) is generated too — the home screen shows the mark,
+  and Flutter cannot render SVG without a package.
+- Colours come from `AppColors.dark` only. The mark is a pointing hand: white, with the
+  brand red on the cuff so something other than white survives at 40px.
+
 ## Tickets / Backlog
 
 Work is tracked with **Backlog.md** in `backlog/`. Tasks are grouped under milestones

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'screens/home_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const PhotoRouletteApp());
@@ -13,13 +15,7 @@ class PhotoRouletteApp extends StatelessWidget {
     return MaterialApp(
       title: 'Photo Roulette',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFE94560),
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
+      theme: buildAppTheme(),
       home: const HomeScreen(),
     );
   }

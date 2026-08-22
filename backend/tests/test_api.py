@@ -501,6 +501,30 @@ def test_uploaded_photo_can_be_fetched_back(client):
     assert resp.content == b"\xff\xd8\xff_fake_jpeg"
 
 
+def test_png_round_trips_as_png(client):
+    # Uploads used to be stored as .jpg whatever the bytes were, so a PNG came
+    # back labelled image/jpeg.
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    png = b"\x89PNG\r\n\x1a\n_fake_png"
+    # Header deliberately lies: the bytes decide.
+    url = _upload_photo(client, code, host_id, content=png).json()["url"]
+    assert url.endswith(".png")
+
+    resp = client.get(url)
+    assert resp.status_code == 200
+    assert resp.content == png
+    assert resp.headers["content-type"] == "image/png"
+
+
+def test_jpeg_round_trips_as_jpeg(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    url = _upload_photo(client, code, host_id).json()["url"]
+    assert url.endswith(".jpg")
+    assert client.get(url).headers["content-type"] == "image/jpeg"
+
+
 def test_photo_route_does_not_serve_files_outside_the_upload_dir(client):
     # `/rooms/../photos/<name>` used to resolve out of UPLOAD_DIR and serve
     # arbitrary files from the working directory.
@@ -564,7 +588,7 @@ def test_a_rejected_upload_leaves_no_file_behind(client, tmp_path, monkeypatch):
 
     resp = _upload_photo(client, code, "not-a-player")
     assert resp.status_code == 400
-    assert list(tmp_path.rglob("*.jpg")) == []
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
 
 
 def test_room_has_a_player_cap(client):

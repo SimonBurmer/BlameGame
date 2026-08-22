@@ -1,10 +1,10 @@
 ---
 id: TASK-13
 title: Fix photo content-type handling (stop forcing .jpg)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 10:42'
+updated_date: '2026-08-22 13:40'
 labels:
   - frontend
   - backend
@@ -24,9 +24,9 @@ Backend always writes uploads as .jpg regardless of real format (main.py), and t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Client sends the correct content-type for the picked file
-- [ ] #2 Server stores files with the correct extension/type
-- [ ] #3 PNG/HEIC and other common formats round-trip correctly
+- [x] #1 Client sends the correct content-type for the picked file
+- [x] #2 Server stores files with the correct extension/type
+- [x] #3 PNG/HEIC and other common formats round-trip correctly
 <!-- AC:END -->
 
 ## Implementation Notes

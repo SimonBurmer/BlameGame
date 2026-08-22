@@ -290,7 +290,7 @@ class GameController extends ChangeNotifier {
           s.roomCode,
           s.playerId,
           photos[i],
-          filename: 'photo_$i.jpg',
+          filename: 'photo_$i',
         );
         uploaded++;
       } on Exception {

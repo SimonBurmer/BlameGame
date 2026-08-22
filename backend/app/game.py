@@ -127,6 +127,33 @@ def add_photo(room: Room, *, owner_id: str, url: str) -> Photo:
     return photo
 
 
+def set_settings(
+    room: Room,
+    *,
+    total_rounds: Optional[int] = None,
+    round_seconds: Optional[int] = None,
+    hardcore: Optional[bool] = None,
+) -> None:
+    """Update the host's game settings while the room is still in the lobby.
+
+    Rounds and round length stay editable until the game starts. Hardcore does
+    not: photos are contributed in the lobby, so once anyone has uploaded,
+    flipping the mode would retroactively break the promise that they saw what
+    they shared. The lock lives here rather than in the UI because a client can
+    post whatever it likes.
+    """
+    if room.state != RoomState.LOBBY:
+        raise GameError("settings can only be changed in the lobby")
+    if hardcore is not None and hardcore != room.hardcore and room.photos:
+        raise GameError("hardcore mode is locked once photos have been added")
+    if total_rounds is not None:
+        room.total_rounds = total_rounds
+    if round_seconds is not None:
+        room.round_seconds = round_seconds
+    if hardcore is not None:
+        room.hardcore = hardcore
+
+
 def start_game(room: Room, *, total_rounds: int = 5, round_seconds: int = 10) -> None:
     """Begin the game: validate, build the rounds, enter the first round."""
     if room.state != RoomState.LOBBY:
@@ -146,6 +173,7 @@ def start_game(room: Room, *, total_rounds: int = 5, round_seconds: int = 10) ->
     ]
     room.current_round = 0
     room.round_seconds = round_seconds
+    room.total_rounds = total_rounds
     room.state = RoomState.IN_ROUND
     # New game, new epoch: any driver still sleeping on the previous one must
     # not wake up and drive this game too.

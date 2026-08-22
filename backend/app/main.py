@@ -120,6 +120,11 @@ app.add_middleware(
 
 # --- request bodies ------------------------------------------------------
 
+class CreateRoomBody(BaseModel):
+    # Set at creation and immutable thereafter; see Room.hardcore.
+    hardcore: bool = False
+
+
 class JoinBody(BaseModel):
     name: str = Field(min_length=1, max_length=24)
 
@@ -175,6 +180,7 @@ def _room_dict(room: Room) -> dict:
         "current_round": room.current_round,
         "total_rounds": len(room.rounds),
         "round_seconds": room.round_seconds,
+        "hardcore": room.hardcore,
         "players": [_player_dict(p, room) for p in room.players],
     }
 
@@ -189,9 +195,10 @@ def _get_room(code: str) -> Room:
 # --- REST endpoints ------------------------------------------------------
 
 @app.post("/rooms")
-def create_room() -> dict:
-    room = store.create_room()
-    return {"code": room.code}
+def create_room(body: CreateRoomBody | None = None) -> dict:
+    # Body is optional so a client that posts nothing still gets a normal room.
+    room = store.create_room(hardcore=bool(body and body.hardcore))
+    return {"code": room.code, "hardcore": room.hardcore}
 
 
 @app.post("/rooms/{code}/join")

@@ -68,6 +68,17 @@ class GameController extends ChangeNotifier {
   int? lastPointsEarned;
   int roundSeconds = 10;
 
+  /// Whether this room uploads photos blind, learned from the room snapshot.
+  ///
+  /// Null until the snapshot has landed: "mode unknown" is deliberately not
+  /// the same as "normal mode". A client that sampled before knowing could
+  /// upload blind in a room the player believed showed a preview, so screens
+  /// must gate sampling on [photoModeKnown] rather than on `hardcore == true`.
+  bool? hardcore;
+
+  /// True once the room's photo mode is known and it is safe to sample.
+  bool get photoModeKnown => hardcore != null;
+
   /// Server epoch-ms deadline for the current round, or null between rounds.
   int? roundEndsAt;
 
@@ -114,8 +125,10 @@ class GameController extends ChangeNotifier {
   }
 
   /// Create a room and join it as the host.
-  Future<void> createAndHost(String name) async {
-    final code = await api.createRoom();
+  ///
+  /// [hardcore] is fixed for the room's lifetime; it cannot be changed later.
+  Future<void> createAndHost(String name, {bool hardcore = false}) async {
+    final code = await api.createRoom(hardcore: hardcore);
     await _join(code, name);
   }
 
@@ -140,11 +153,15 @@ class GameController extends ChangeNotifier {
       final snapshot = await api.getRoom(code);
       _mergeRoster(snapshot.players);
       roundSeconds = snapshot.roundSeconds;
+      // The host reads the mode back off the snapshot too, rather than
+      // trusting what it asked for, so every client agrees on one source.
+      hardcore = snapshot.hardcore;
     } catch (_) {
       // Don't leave a half-joined controller behind.
       await _teardownSocket();
       _session = null;
       _players.clear();
+      hardcore = null;
       rethrow;
     }
     notifyListeners();
@@ -201,6 +218,7 @@ class GameController extends ChangeNotifier {
     final snapshot = await api.getRoom(session.roomCode);
     _mergeRoster(snapshot.players);
     roundSeconds = snapshot.roundSeconds;
+    hardcore = snapshot.hardcore;
     connectionError = null;
     notifyListeners();
   }
@@ -365,8 +383,34 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  /// Set once the owner has asked for teardown; see [dispose].
+  bool _disposeRequested = false;
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    // The screen that just let go may have been the last one holding this
+    // controller open past a requested teardown.
+    if (_disposeRequested && !hasListeners) dispose();
+  }
+
+  /// Tears down the connections and the notifier — once no screen needs it.
+  ///
+  /// The owner (`HomeScreen`) disposes when its awaited `Navigator.push`
+  /// resolves. But `pushReplacement` *completes the route it replaces*, so
+  /// that await also fires in the middle of a lobby -> game hand-off (and
+  /// game -> results, and results -> lobby on rematch). Disposing there killed
+  /// a controller the incoming screen was already listening to: the
+  /// "GameController was used after being disposed" crash on game start.
+  ///
+  /// So teardown is deferred while any screen is still listening, and runs
+  /// from [removeListener] as soon as the last one lets go. Deferring rather
+  /// than skipping is what keeps the WebSocket and http.Client from leaking a
+  /// connection per game.
   @override
   void dispose() {
+    _disposeRequested = true;
+    if (hasListeners) return;
     // Cancel before closing: a cancelled subscription never delivers onDone,
     // so normal teardown can't trip the connection-lost banner.
     _sub?.cancel();

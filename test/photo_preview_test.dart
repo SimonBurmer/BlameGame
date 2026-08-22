@@ -60,6 +60,17 @@ Future<void> _openPreview(WidgetTester tester, FakeSampler sampler) async {
   await settle(tester);
 }
 
+/// The default harness snapshot, but for a hardcore room.
+const _hardcoreSnapshot = {
+  'state': 'lobby',
+  'round_seconds': 10,
+  'hardcore': true,
+  'players': [
+    {'id': 'me', 'name': 'Emma', 'is_host': true, 'score': 0},
+    {'id': 'p2', 'name': 'Jake', 'is_host': false, 'score': 0},
+  ],
+};
+
 void main() {
   testWidgets('previews the sampled photos before anything is uploaded',
       (tester) async {
@@ -140,6 +151,64 @@ void main() {
     await settle(tester);
 
     expect(h.http.countFor('/photos'), 2);
+  });
+
+  testWidgets('hardcore mode uploads blind, with no preview or reshuffle',
+      (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b'],
+    ]);
+    final h = await harness(snapshot: _hardcoreSnapshot);
+    await pumpScreen(
+      tester,
+      LobbyScreen(controller: h.controller, sampler: sampler),
+    );
+
+    await tester.tap(find.text('ADD PHOTOS'));
+    await settle(tester);
+
+    expect(find.text('THESE PHOTOS?'), findsNothing);
+    expect(find.text('RESHUFFLE'), findsNothing);
+    // Straight to the server, no confirmation step.
+    expect(h.http.countFor('/photos'), 2);
+  });
+
+  testWidgets('the lobby states the mode before anything is uploaded',
+      (tester) async {
+    final normal = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: normal.controller));
+    expect(find.textContaining('reshuffle before sharing'), findsOneWidget);
+    expect(normal.http.countFor('/photos'), 0);
+
+    final hard = await harness(snapshot: _hardcoreSnapshot);
+    await pumpScreen(tester, LobbyScreen(controller: hard.controller));
+    expect(find.textContaining('HARDCORE'), findsOneWidget);
+    expect(
+      find.textContaining('without showing them to you first'),
+      findsOneWidget,
+    );
+    expect(hard.http.countFor('/photos'), 0);
+  });
+
+  testWidgets('a client that has not learned the mode cannot sample',
+      (tester) async {
+    final sampler = FakeSampler([
+      ['a', 'b'],
+    ]);
+    final h = await harness();
+    // Simulate a client whose snapshot has not landed yet.
+    h.controller.hardcore = null;
+    await pumpScreen(
+      tester,
+      LobbyScreen(controller: h.controller, sampler: sampler),
+    );
+
+    await tester.tap(find.text('ADD PHOTOS'));
+    await settle(tester);
+
+    // Nothing was even read off the camera roll, let alone uploaded.
+    expect(sampler.calls, 0);
+    expect(h.http.countFor('/photos'), 0);
   });
 
   testWidgets('dismissing the preview uploads nothing', (tester) async {

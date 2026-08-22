@@ -1,16 +1,17 @@
 ---
 id: TASK-43
 title: 'Hardcore mode: upload the sampled photos blind, no preview'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-08-22 13:37'
-updated_date: '2026-08-22 13:47'
+updated_date: '2026-08-22 18:05'
 labels:
   - frontend
   - backend
   - gameplay
 dependencies:
   - TASK-42
+priority: high
 ordinal: 43000
 ---
 
@@ -28,9 +29,9 @@ Every client must learn the mode from the room snapshot before it samples; a cli
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Room carries a hardcore flag set by the host when configuring the game
-- [ ] #2 In hardcore mode photos are sampled and uploaded without a preview or reshuffle
-- [ ] #3 In normal mode the TASK-42 preview and reshuffle flow runs
-- [ ] #4 Every client learns the mode from the room snapshot, not from local state
-- [ ] #5 The lobby clearly shows which mode is active before any photo is uploaded
+- [x] #1 Room carries a hardcore flag set by the host when configuring the game
+- [x] #2 In hardcore mode photos are sampled and uploaded without a preview or reshuffle
+- [x] #3 In normal mode the TASK-42 preview and reshuffle flow runs
+- [x] #4 Every client learns the mode from the room snapshot, not from local state
+- [x] #5 The lobby clearly shows which mode is active before any photo is uploaded
 <!-- AC:END -->

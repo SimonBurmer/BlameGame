@@ -11,8 +11,10 @@ autouse fixture below).
 import io
 
 import pytest
+from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
 
+from app.connection import manager
 from app.main import app
 from app.models import RoomState
 from app.store import store
@@ -469,6 +471,54 @@ def test_kicked_player_is_refused_a_new_socket(client):
     with pytest.raises(Exception):
         with client.websocket_connect(f"/ws/{code}/{jake_id}"):
             pass
+
+
+def test_kick_closes_the_kicked_players_open_socket(client):
+    """A client that ignores player_left must still stop receiving the feed.
+
+    Asserted server-side (the socket is deregistered and a later broadcast is
+    not delivered to it), not by a cooperating client hanging up.
+    """
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as host_ws:
+        with client.websocket_connect(f"/ws/{code}/{jake_id}") as jake_ws:
+            client.post(
+                f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id}
+            )
+
+            # Server-side: Jake holds no socket in this room any more.
+            assert manager._players.get((code, jake_id)) is None
+            assert len(manager._rooms.get(code, [])) == 1
+
+            host_ws.receive_json()  # player_left
+            # Jake's client ignores player_left and keeps reading. It gets the
+            # close frame, then nothing -- not the next room event.
+            jake_ws.receive_json()  # player_left, delivered before the close
+            with pytest.raises(WebSocketDisconnect):
+                jake_ws.receive_json()
+
+        client.post(f"/rooms/{code}/join", json={"name": "Zoe"})
+        # The post-kick event reaches the host and nobody else.
+        assert host_ws.receive_json()["type"] == "player_joined"
+
+
+def test_kick_closes_every_socket_a_player_holds(client):
+    """A reconnect race can leave a stale socket open; both must be closed."""
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{jake_id}"):
+        with client.websocket_connect(f"/ws/{code}/{jake_id}"):
+            assert len(manager._players[(code, jake_id)]) == 2
+            client.post(
+                f"/rooms/{code}/kick", json={"host_id": host_id, "player_id": jake_id}
+            )
+            assert manager._players.get((code, jake_id)) is None
+            assert manager._rooms.get(code) is None
 
 
 def test_leaving_mid_game_does_not_leave_a_round_on_a_departed_player(client):

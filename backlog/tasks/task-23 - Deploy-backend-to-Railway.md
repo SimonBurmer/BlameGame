@@ -5,7 +5,7 @@ status: Done
 assignee:
   - '@simon'
 created_date: '2026-08-18 14:50'
-updated_date: '2026-08-18 16:51'
+updated_date: '2026-08-22 13:07'
 labels:
   - infra
   - backend
@@ -53,4 +53,12 @@ App code needed no changes - main.py already binds 0.0.0.0/$PORT, reads UPLOAD_D
 Remaining work is dashboard-only and cannot be done from the repo: create the Railway service with Root Directory=backend, generate a domain, add RAILWAY_TOKEN secret + RAILWAY_SERVICE variable in GitHub. AC 1-5 stay unchecked until verified against the live URL.
 
 Known limitation (accepted, not a bug): Railway's filesystem is ephemeral, so uploaded photos are lost on redeploy. Fine for short-lived rounds; needs a Volume + UPLOAD_DIR override for persistence.
+
+Switched deploy strategy: Railway's GitHub integration now drives deploys instead of a 'railway up' job in CI. The deploy job has been removed from .github/workflows/ci.yml, so RAILWAY_TOKEN and RAILWAY_SERVICE are no longer needed in GitHub.
+
+Reason: the requirement was to redeploy only on backend changes. Railway supports that natively via watch patterns, but they are evaluated against the uploaded archive - and 'railway up' uploads the CONTENTS of backend/ as the archive root, so paths inside it are app/main.py rather than backend/app/main.py. A /backend/** pattern therefore matches nothing and every deploy is silently marked Skipped (no build, no error). The GitHub integration checks out the whole repo, so the pattern works there.
+
+Required dashboard settings for the new setup: Root Directory=backend, Watch patterns=/backend/**, and a generated domain.
+
+Also worth recording: the Homebrew railway formula is pinned to v2.1.0, whose auth endpoint is gone - 'railway login' fails with a bare 404. Use 'npm install -g @railway/cli' for v5.
 <!-- SECTION:NOTES:END -->

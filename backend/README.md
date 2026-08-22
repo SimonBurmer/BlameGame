@@ -25,39 +25,47 @@ This directory is Railway-ready:
 
 ### One-time setup (manual, in the Railway dashboard)
 
-1. Create a new project and add a service for this backend.
-2. Leave **Settings → Root Directory** *empty*. The GitHub Actions deploy job
-   runs `railway up` from within `backend/`, so it uploads this folder as the
-   build root already. Setting Root Directory to `backend` on top of that makes
-   Nixpacks look for `backend/backend/` and the build fails with
-   `Failed to read app source directory`.
-3. **Settings → Networking → Generate Domain** to get a public URL, e.g.
+Deploys are driven by **Railway's own GitHub integration**, not by CI. Railway
+watches `main` and rebuilds only when the backend changes, so a Flutter-only or
+docs-only merge leaves the running server alone. That matters here: game state
+is in memory, so every redeploy drops all live rooms.
+
+1. Create a project, then **Deploy from GitHub repo** and pick this repository.
+2. **Settings → Root Directory** → `backend`. The integration checks out the
+   whole repo, so the service has to be told which folder to build.
+3. **Settings → Watch patterns** → `/backend/**`. This is what stops unrelated
+   merges from redeploying. Paths are relative to the repo root, not to the
+   root directory.
+4. **Settings → Networking → Generate Domain** to get a public URL, e.g.
    `https://<app>.up.railway.app`.
-4. **Variables**: `UPLOAD_DIR` is optional — it defaults to `uploads`, which
+5. **Variables**: `UPLOAD_DIR` is optional — it defaults to `uploads`, which
    works out of the box. Only set it if you attach a Volume (see below).
    `PORT` is injected by Railway; do not set it yourself.
-5. Deploy. Railway installs `[project].dependencies` from `pyproject.toml`
+6. Deploy. Railway installs `[project].dependencies` from `pyproject.toml`
    (the `dev` extras are skipped in production).
-6. Verify: `curl https://<app>.up.railway.app/health` → `{"status":"ok"}`.
+7. Verify: `curl https://<app>.up.railway.app/health` → `{"status":"ok"}`.
 
-> If you ever switch to Railway's own GitHub integration instead of the Actions
-> job, the opposite applies: that integration pulls the whole repo, so Root
-> Directory **must** be set to `backend`.
+> **Do not also deploy from GitHub Actions.** The two would race and deploy the
+> same commit twice. The workflow deliberately has no deploy job.
 
-### Automatic deploys (GitHub Actions)
+### Deploying by hand
 
-`.github/workflows/backend.yml` runs the backend tests on every PR and, on
-merge to `main`, deploys to Railway. It needs two things in the GitHub repo
-(**Settings → Secrets and variables → Actions**):
+`railway up` still works for a one-off deploy from your machine:
 
-| Kind | Name | Value |
-|------|------|-------|
-| Secret | `RAILWAY_TOKEN` | Railway → Account Settings → Tokens → create a token |
-| Variable | `RAILWAY_SERVICE` | The service name shown in the Railway project |
+```bash
+cd backend && railway link && railway up
+```
 
-If you'd rather not use GitHub Actions at all, Railway's own GitHub integration
-can auto-deploy on push to `main` — in that case delete the `deploy` job from
-the workflow so the two don't both deploy.
+Two gotchas, both of which have cost real debugging time:
+
+- It uploads the *contents* of `backend/` as the build root, so inside the
+  archive the paths are `app/main.py`, not `backend/app/main.py`. A
+  `/backend/**` watch pattern therefore matches nothing and the deploy is
+  silently marked **Skipped** — no build, no error. Watch patterns only work
+  for the GitHub integration.
+- The CLI must be v5 or newer (`npm install -g @railway/cli`). The Homebrew
+  formula is pinned to v2, whose auth endpoint no longer exists, so
+  `railway login` fails there with a bare `404`.
 
 ### Important constraints (by design)
 

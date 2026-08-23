@@ -144,13 +144,7 @@ class GameController extends ChangeNotifier {
     // their photo is an automatic zero.
     _connectSocket();
     try {
-      final snapshot = await api.getRoom(code);
-      _mergeRoster(snapshot.players);
-      roundSeconds = snapshot.roundSeconds;
-      totalRounds = snapshot.totalRounds;
-      // The host reads the mode back off the snapshot too, rather than
-      // trusting what it asked for, so every client agrees on one source.
-      hardcore = snapshot.hardcore;
+      _applySnapshot(await api.getRoom(code, playerId: result.playerId));
     } catch (_) {
       // Don't leave a half-joined controller behind.
       await _teardownSocket();
@@ -160,6 +154,48 @@ class GameController extends ChangeNotifier {
       rethrow;
     }
     notifyListeners();
+  }
+
+  /// Seeds every bit of game state the server reports, for both a fresh join
+  /// and a [reconnect].
+  ///
+  /// Doing this on join is what lets a late joiner (or a player whose socket
+  /// dropped) land in the phase the room is actually in: without it the client
+  /// sits in the lobby until the *next* socket event happens to arrive, which
+  /// mid-reveal can be seconds away and at the end of the game never comes.
+  void _applySnapshot(RoomSnapshot snapshot) {
+    _mergeRoster(snapshot.players);
+    roundSeconds = snapshot.roundSeconds;
+    totalRounds = snapshot.totalRounds;
+    // The host reads the mode back off the snapshot too, rather than
+    // trusting what it asked for, so every client agrees on one source.
+    hardcore = snapshot.hardcore;
+
+    final round = snapshot.round;
+    if (round != null) {
+      roundIndex = round.index;
+      currentPhoto = round.photo;
+      roundEndsAt = round.endsAt;
+      hasGuessedThisRound = round.hasGuessed;
+      // Only present once the round is revealed; while it is live the server
+      // withholds it, since it is the answer being guessed.
+      revealedOwnerId = round.photo.ownerId;
+    }
+
+    switch (snapshot.state) {
+      case 'in_round':
+        phase = GamePhase.inRound;
+      case 'revealing':
+        phase = GamePhase.revealed;
+      case 'finished':
+        // Rankings ride in on the roster: the snapshot carries every player's
+        // final score, so there is no separate results payload to wait for.
+        _finalRankings = [..._players]
+          ..sort((a, b) => b.score.compareTo(a.score));
+        phase = GamePhase.finished;
+      default:
+        phase = GamePhase.lobby;
+    }
   }
 
   /// Folds a server snapshot into the live roster.
@@ -210,11 +246,9 @@ class GameController extends ChangeNotifier {
   Future<void> reconnect() async {
     await _teardownSocket();
     _connectSocket();
-    final snapshot = await api.getRoom(session.roomCode);
-    _mergeRoster(snapshot.players);
-    roundSeconds = snapshot.roundSeconds;
-    totalRounds = snapshot.totalRounds;
-    hardcore = snapshot.hardcore;
+    _applySnapshot(
+      await api.getRoom(session.roomCode, playerId: session.playerId),
+    );
     connectionError = null;
     notifyListeners();
   }

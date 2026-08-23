@@ -1,10 +1,10 @@
 ---
 id: TASK-20
 title: Fill backend HTTP/WS endpoint test gaps
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 10:42'
+updated_date: '2026-08-23 10:22'
 labels:
   - backend
   - testing

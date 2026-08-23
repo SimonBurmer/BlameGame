@@ -7,6 +7,28 @@ import 'package:http_parser/http_parser.dart' show MediaType;
 import '../config.dart';
 import '../models/game_models.dart';
 
+/// The in-flight round carried by a room snapshot; absent in the lobby.
+///
+/// [endsAt] is a server epoch-ms deadline (null once the round is revealed),
+/// and [photo]`.ownerId` is null while the round is still live — the owner is
+/// the answer, so the server withholds it until the reveal.
+typedef RoundSnapshot = ({
+  int index,
+  PhotoInfo photo,
+  int? endsAt,
+  bool hasGuessed,
+});
+
+/// A full room snapshot: roster, settings, phase, and the in-flight round.
+typedef RoomSnapshot = ({
+  List<GamePlayer> players,
+  int totalRounds,
+  int roundSeconds,
+  bool hardcore,
+  String state,
+  RoundSnapshot? round,
+});
+
 /// Thrown when the backend returns a non-2xx response.
 class ApiException implements Exception {
   final int statusCode;
@@ -114,17 +136,19 @@ class ApiClient {
     return _decode(resp)['url'] as String;
   }
 
-  /// Fetch the current room snapshot (players, settings, photo mode).
-  Future<
-      ({
-        List<GamePlayer> players,
-        int totalRounds,
-        int roundSeconds,
-        bool hardcore
-      })> getRoom(
-    String code,
-  ) async {
-    final resp = await _http.get(_uri('/rooms/$code')).timeout(_timeout);
+  /// Fetch the current room snapshot (players, settings, photo mode, and the
+  /// in-flight round when the game has started).
+  ///
+  /// [playerId] scopes the caller's own view of the round — currently whether
+  /// they already guessed it — so a reconnecting player isn't offered a guess
+  /// they've spent.
+  Future<RoomSnapshot> getRoom(
+    String code, {
+    String? playerId,
+  }) async {
+    final resp = await _http
+        .get(_uri('/rooms/$code', playerId == null ? null : {'player_id': playerId}))
+        .timeout(_timeout);
     final body = _decode(resp);
     final players = (body['players'] as List<dynamic>)
         .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
@@ -133,6 +157,8 @@ class ApiClient {
       players: players,
       totalRounds: (body['total_rounds'] as num?)?.toInt() ?? 5,
       roundSeconds: (body['round_seconds'] as num).toInt(),
+      state: body['state'] as String? ?? 'lobby',
+      round: _roundSnapshot(body['round'] as Map<String, dynamic>?),
       // Absent only when talking to a server older than hardcore mode, where
       // every room is normal. Defaulting the other way would upload blind.
       hardcore: body['hardcore'] as bool? ?? false,
@@ -220,3 +246,12 @@ class ApiClient {
 
   void close() => _http.close();
 }
+
+RoundSnapshot? _roundSnapshot(Map<String, dynamic>? r) => r == null
+    ? null
+    : (
+        index: (r['index'] as num).toInt(),
+        photo: PhotoInfo.fromJson(r['photo'] as Map<String, dynamic>),
+        endsAt: (r['ends_at'] as num?)?.toInt(),
+        hasGuessed: r['has_guessed'] as bool? ?? false,
+      );

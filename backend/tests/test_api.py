@@ -935,3 +935,94 @@ def test_upload_cleanup_refuses_a_path_outside_the_upload_dir(tmp_path, monkeypa
 
     main._delete_room_uploads("../not-ours")
     assert victim.is_dir()
+
+
+# --- mid-round state reconstruction ----------------------------------------
+
+def _started_room(client, rounds=2, seconds=30):
+    """A room mid-game, with two players who have both uploaded."""
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    _upload_photo(client, code, jake_id)
+    _start(client, code, host_id, total_rounds=rounds, round_seconds=seconds)
+    return code, host_id, jake_id
+
+
+def test_lobby_snapshot_carries_no_round(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+
+    body = client.get(f"/rooms/{code}").json()
+    assert body["state"] == "lobby"
+    assert "round" not in body
+
+
+def test_snapshot_carries_the_in_flight_round(client):
+    code, host_id, _ = _started_room(client)
+    room = store.get_room(code)
+    room.rounds[room.current_round].ends_at = 1_700_000_000.5
+
+    body = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert body["state"] == "in_round"
+    rnd = body["round"]
+    assert rnd["index"] == room.current_round
+    assert rnd["photo"]["id"] == room.rounds[room.current_round].photo.id
+    # Epoch ms, so the client derives its countdown from the server's clock.
+    assert rnd["ends_at"] == 1_700_000_000_500
+    assert rnd["has_guessed"] is False
+
+
+def test_snapshot_withholds_the_owner_while_the_round_is_live(client):
+    """The owner is the answer -- leaking it would be a free correct guess."""
+    code, host_id, _ = _started_room(client)
+
+    body = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert "owner_id" not in body["round"]["photo"]
+
+
+def test_snapshot_discloses_the_owner_once_revealed(client):
+    code, host_id, _ = _started_room(client)
+    store.get_room(code).state = RoomState.REVEALING
+
+    body = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert body["state"] == "revealing"
+    assert body["round"]["photo"]["owner_id"] == _current_owner(code)
+    # Nothing to count down to once the round is over.
+    assert body["round"]["ends_at"] is None
+
+
+def test_snapshot_reports_a_guess_the_player_already_spent(client):
+    code, host_id, jake_id = _started_room(client)
+    room = store.get_room(code)
+    resp = client.post(
+        f"/rooms/{code}/guess",
+        json={
+            "guesser_id": host_id,
+            "guessed_owner_id": jake_id,
+            "round_index": room.current_round,
+        },
+    )
+    assert resp.status_code == 200
+
+    mine = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert mine["round"]["has_guessed"] is True
+    # ...and only for the player who spent it.
+    theirs = client.get(f"/rooms/{code}", params={"player_id": jake_id}).json()
+    assert theirs["round"]["has_guessed"] is False
+
+
+def test_snapshot_without_a_player_id_reports_no_guess(client):
+    code, _, _ = _started_room(client)
+    assert client.get(f"/rooms/{code}").json()["round"]["has_guessed"] is False
+
+
+def test_finished_snapshot_reports_the_finished_state(client):
+    code, _, _ = _started_room(client)
+    _finish(code)
+
+    body = client.get(f"/rooms/{code}").json()
+    assert body["state"] == "finished"
+    # The last round stays on the snapshot, answer and all.
+    assert body["round"]["photo"]["owner_id"] == _current_owner(code)

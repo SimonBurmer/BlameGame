@@ -35,7 +35,7 @@ from app.game import (
     start_game,
     submit_guess,
 )
-from app.models import Photo, Player, Room
+from app.models import Photo, Player, Room, RoomState
 from app.store import RoomNotFound, store
 from app.timer import RoundDriver
 
@@ -309,8 +309,11 @@ def get_photo(code: str, filename: str) -> FileResponse:
 
 
 @app.get("/rooms/{code}")
-def get_room(code: str) -> dict:
-    return _room_dict(_get_room(code))
+def get_room(code: str, player_id: str | None = None) -> dict:
+    # player_id is optional and only scopes the caller's own view (whether they
+    # already guessed this round). It grants nothing, so an absent or bogus one
+    # simply means "no per-player detail".
+    return _room_dict(_get_room(code), player_id)
 
 
 @app.post("/rooms/{code}/settings")

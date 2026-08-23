@@ -38,8 +38,26 @@ class GameController extends ChangeNotifier {
   final ApiClient api;
   final GameSocketFactory _socketFactory;
 
-  GameController({ApiClient? api, GameSocketFactory? socketFactory})
-      : api = api ?? ApiClient(),
+  /// How often to ping, and how long to wait for any frame back before calling
+  /// the socket dead. Injectable so tests don't wait real seconds.
+  final Duration heartbeatInterval;
+
+  /// Backoff before each automatic retry. Bounded on purpose: once these are
+  /// spent the banner comes back and RETRY is the player's fallback. An
+  /// endless silent retry loop is worse than a visible failure.
+  final List<Duration> retryBackoff;
+
+  GameController({
+    ApiClient? api,
+    GameSocketFactory? socketFactory,
+    this.heartbeatInterval = const Duration(seconds: 15),
+    this.retryBackoff = const [
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+    ],
+  })  : api = api ?? ApiClient(),
         _socketFactory = socketFactory ?? GameSocket.connect;
 
   GameSession? _session;

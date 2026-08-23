@@ -36,5 +36,10 @@ class GameSocket {
             jsonDecode(raw as String) as Map<String, dynamic>,
           ));
 
+  /// Sends a heartbeat. The backend answers with a `pong` frame, which is what
+  /// lets the client tell a live socket from a silently dead one — on mobile a
+  /// vanished network often produces neither onDone nor onError.
+  void ping() => _channel.sink.add('{"type":"ping"}');
+
   Future<void> close() => _channel.sink.close();
 }

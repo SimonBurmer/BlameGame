@@ -476,7 +476,12 @@ async def game_socket(websocket: WebSocket, code: str, player_id: str) -> None:
             # We don't require inbound messages; keep the socket open so the
             # client can receive broadcasts. receive_text() blocks until the
             # client sends or disconnects.
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            # Answer heartbeats. A silently dropped connection delivers no
+            # close frame on mobile, so the client can only tell the socket is
+            # dead by noticing this reply never arrives.
+            if message == '{"type":"ping"}':
+                await websocket.send_json({"type": "pong"})
     except WebSocketDisconnect:
         pass
     finally:

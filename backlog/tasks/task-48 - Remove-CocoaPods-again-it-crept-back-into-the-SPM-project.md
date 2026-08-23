@@ -4,7 +4,7 @@ title: Remove CocoaPods again - it crept back into the SPM project
 status: To Do
 assignee: []
 created_date: '2026-08-22 22:47'
-updated_date: '2026-08-22 22:47'
+updated_date: '2026-08-23 10:05'
 labels:
   - ios
   - build
@@ -37,3 +37,26 @@ Verify the app still builds and runs on a simulator after removal - that is the 
 - [ ] #3 The app still builds and launches on a simulator with plugins linked
 - [ ] #4 A flutter build no longer leaves tracked-file churn in git status
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+INVESTIGATION CORRECTED THE PREMISE - do not implement this as originally written.
+
+The ticket assumed CocoaPods was vestigial junk that could simply be stripped. It is not: the app currently BUILDS AND RUNS on CocoaPods. Verified on main:
+- Runner.app/Frameworks/ contains photo_manager.framework and image_picker_ios.framework as embedded frameworks (that is CocoaPods linkage)
+- nm on Runner.debug.dylib finds ZERO photo_manager symbols, so plugins are NOT statically linked as they would be under SPM
+- ios/Pods/ exists with a populated Manifest.lock
+
+So the pbxproj carries BOTH: 13 SPM package references left over from TASK-25's migration AND 8 Pods refs that actually do the work. Stripping the Pods refs without restoring working SPM linkage would break the iOS build outright.
+
+CLAUDE.md is therefore stale on this point - it states plugins are statically linked into Runner.debug.dylib under SPM, which is not true of the current tree.
+
+Re-scope before any implementation. Two honest options:
+(a) Genuinely re-migrate to SPM: remove Pods, confirm plugins link statically, verify the app launches with a working camera roll. Real work, needs on-device verification.
+(b) Accept CocoaPods as the actual toolchain, delete the dead SPM refs instead, and correct CLAUDE.md.
+
+Either way the diff-noise problem (Podfile and xcconfig regenerating on every flutter command) is a separate, smaller fix that does not require picking (a) or (b) first.
+
+A first attempt was aborted after this was discovered; its worktree was reverted, nothing committed.
+<!-- SECTION:NOTES:END -->

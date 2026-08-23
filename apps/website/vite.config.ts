@@ -1,14 +1,15 @@
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
-// The only build here is the SSR bundle for the prerender step: there is no
-// client entry, because the site ships no client JavaScript.
+// Two builds. `vite build` produces the client bundle that hydrates the page
+// (the animated pieces need it); `vite build --ssr src/entry-static.tsx`
+// produces the prerenderer, which then writes the HTML. The manifest is what
+// lets the prerenderer name the hashed asset files in the <head>.
 export default defineConfig({
   plugins: [react()],
   build: {
-    ssr: true,
-    target: 'node20',
-    rollupOptions: { output: { format: 'es' } },
-    emptyOutDir: true,
+    manifest: true,
+    target: 'es2022',
+    rollupOptions: { input: 'src/entry-client.tsx' },
   },
 });

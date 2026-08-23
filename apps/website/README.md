@@ -9,16 +9,33 @@ npm run build -w @blame-game/website
 npm run preview -w @blame-game/website   # builds, then serves dist/ on :4173
 ```
 
-## Why there is no client bundle
+## Prerendered, then hydrated
 
-Everything on the page that looks interactive is a native element: the language
-switch is two links, the section jumps are anchors, the FAQ is `<details>`.
-Nothing needs hydrating, so nothing ships. React and TypeScript are the
-authoring layer, not the runtime — `src/entry-static.tsx` renders each locale
-with `renderToStaticMarkup` and writes the HTML.
+`src/entry-static.tsx` renders every locale with `renderToStaticMarkup` and
+writes the HTML; `src/entry-client.tsx` hydrates it. The markup is complete
+before any script runs — the animated components render their content
+server-side and only start moving once mounted — so a crawler, and anybody with
+JavaScript off, still gets the entire page.
 
-That makes the page a crawler sees byte-identical to the page a person sees,
-which is the whole SEO argument.
+`<html class="no-js">` plus a one-line inline script keeps that honest: the
+script removes the class immediately, and if scripting never runs the class
+stays and CSS in `styles-animation.css` forces anything that would have
+animated in to be visible. Without it, a no-JS visitor would get an invisible
+headline.
+
+The trade is weight: hydration plus `motion` is roughly 110 kB gzipped. That is
+the price of the animation, and it is worth re-checking if the page ever needs
+to be fast on a bad connection more than it needs to move.
+
+## React Bits
+
+`src/components/reactbits/` is vendored from the React Bits registry (the
+TypeScript + plain-CSS variants; this site has no Tailwind). `components.json`
+points at the registry so `shadcn` and its MCP server can add more.
+
+Those files have been edited to satisfy this project's `strict` +
+`noUncheckedIndexedAccess` tsconfig. **Re-fetching a component from the
+registry will overwrite those edits** — expect to redo them.
 
 ## Adding or changing copy
 
@@ -50,9 +67,15 @@ earns a manual action instead of a rich result.
 
 ## Assets
 
-`public/` is generated, not hand-made — `scripts/generate-app-icons.sh` renders
-the favicon, the Apple touch icon and the Open Graph card from the same vectors
-as the app icon, so the site cannot drift from the app. Do not edit the PNGs.
+`public/` is generated, not hand-made. Do not edit it by hand.
+
+- `scripts/generate-app-icons.sh` renders the favicon, the Apple touch icon and
+  the Open Graph card from the same vectors as the app icon, so the site cannot
+  drift from the app.
+- `public/screenshots/` are real captures of the app running on a simulator.
+  `scripts/capture-app-screenshots.sh` drives it through the game and shoots;
+  `scripts/prepare-screenshots.sh` resizes them for the web. Nothing here is a
+  mockup.
 
 ## Not here yet
 

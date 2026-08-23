@@ -28,8 +28,26 @@ export const en: Messages = {
     eyebrow: 'Party game · 2–12 players · one phone each',
     headline: 'Guess whose photo is on the screen.',
     sub: 'Everyone throws photos from their camera roll into one room. Each round, one of them appears. Work out who it belongs to before anybody else does — the faster you are, the more it is worth.',
-    availability: 'In development. Not on the stores yet.',
+    availability: 'Out now on iPhone',
+    primaryCta: 'App Store',
+    primaryCtaEyebrow: 'Download on the',
     secondaryCta: 'See how it works',
+  },
+  stats: [
+    { value: 12, suffix: '', label: 'players in a room' },
+    { value: 10, suffix: '', label: 'photos each' },
+    { value: 5, suffix: '', label: 'characters in a code' },
+  ],
+  shots: {
+    heading: 'What it looks like',
+    sub: 'Straight off a phone, mid-game.',
+    items: [
+      { file: 'lobby', caption: 'Read out the code, watch everyone land', alt: 'The lobby, showing a game code and five players who have joined' },
+      { file: 'round', caption: 'One photo, one clock, five suspects', alt: 'A round in progress with a photo and the other players to choose from' },
+      { file: 'guessed', caption: 'Lock it in before the clock does', alt: 'A guess submitted, with the chosen player highlighted' },
+      { file: 'reveal', caption: 'And then you find out', alt: 'The reveal, naming whose photo it was' },
+      { file: 'results', caption: 'Somebody has to win', alt: 'The final leaderboard with scores for every player' },
+    ],
   },
   steps: {
     heading: 'Three things happen',
@@ -102,15 +120,15 @@ export const en: Messages = {
           'The opt-in version where you do not get to preview the shuffle. Whatever it picked from your camera roll goes into the room, unseen by you until it is on everybody’s screen.',
       },
       {
-        question: 'When can I download it?',
+        question: 'What does it cost?',
         answer:
-          'It is still in development and there is no store listing yet. This page will carry the links when there are links to carry.',
+          'Nothing to download. There is no account to make and nothing to set up — you type a name, join a code, and play.',
       },
     ],
   },
   cta: {
-    heading: 'Not out yet.',
-    body: 'The game is being built in the open. When it reaches the App Store and Google Play, the buttons will appear right here.',
+    heading: 'Get everyone in a room.',
+    body: 'Free to download. No account, no setup — just a code read out loud and whatever is already on your phone.',
   },
   footer: {
     tagline: 'Guess whose photo it is.',

@@ -1,10 +1,14 @@
 /**
  * Build step: renders every locale to static HTML.
  *
- * The site ships no client JavaScript. Everything interactive on the page —
- * the language switch, the anchors, the FAQ accordion — is a link or a
- * <details>, so there is nothing to hydrate. That keeps the HTML a crawler
- * sees identical to the page a person sees.
+ * The markup is complete before any script runs — every animated component
+ * renders its content server-side and only starts moving once hydrated — so a
+ * crawler and a person with JavaScript off both get the whole page. The client
+ * bundle is enhancement: motion, the cursor spotlight, the tilt.
+ *
+ * `<html class="no-js">` plus a one-line inline script is what keeps that
+ * honest: if scripting never runs, the class stays and CSS forces anything
+ * that would have animated in to be visible.
  */
 import { mkdir, copyFile, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -42,7 +46,29 @@ function cssVariables(): string {
   return `:root {\n${body}\n}\n`;
 }
 
-function renderDocument(locale: Locale, css: string, logoSvg: string): string {
+interface ClientAssets {
+  readonly script: string;
+  readonly styles: readonly string[];
+}
+
+/** Reads Vite's manifest to find the hashed client entry and its CSS. */
+async function clientAssets(): Promise<ClientAssets> {
+  const manifestPath = join(outDir, '.vite/manifest.json');
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Record<
+    string,
+    { file: string; css?: string[]; isEntry?: boolean }
+  >;
+  const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
+  if (!entry) throw new Error('no client entry in the Vite manifest');
+  return { script: `/${entry.file}`, styles: (entry.css ?? []).map((f) => `/${f}`) };
+}
+
+function renderDocument(
+  locale: Locale,
+  css: string,
+  logoSvg: string,
+  assets: ClientAssets,
+): string {
   const m = messages[locale];
   const head = buildHead(locale, m);
 
@@ -62,19 +88,30 @@ function renderDocument(locale: Locale, css: string, logoSvg: string): string {
     })
     .join('\n');
 
+  const data = jsonLd({ locale, logoSvg });
+  const stylesheets = assets.styles
+    .map((href) => `    <link rel="stylesheet" href="${href}">`)
+    .join('\n');
+
   return `<!doctype html>
-<html lang="${m.htmlLang}">
+<html lang="${m.htmlLang}" class="no-js">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${escapeHtml(head.title)}</title>
 ${metas}
 ${links}
+    <script>document.documentElement.classList.remove('no-js')</script>
     <style>${css}</style>
+${stylesheets}
     <script type="application/ld+json">${jsonLd(softwareApplicationSchema(locale, m))}</script>
     <script type="application/ld+json">${jsonLd(faqSchema(m))}</script>
   </head>
-  <body>${body}</body>
+  <body>
+    <div id="root">${body}</div>
+    <script type="application/json" id="__APP_DATA__">${data}</script>
+    <script type="module" src="${assets.script}"></script>
+  </body>
 </html>
 `;
 }
@@ -87,32 +124,53 @@ function escapeAttr(value: string): string {
   return escapeHtml(value).replace(/"/g, '&quot;');
 }
 
+/** Copies public/ into dist/, one level of subdirectory deep (screenshots/). */
 async function copyPublicAssets(): Promise<number> {
   const publicDir = join(projectRoot, 'public');
-  let entries: string[];
+  let entries;
   try {
-    entries = await readdir(publicDir);
+    entries = await readdir(publicDir, { withFileTypes: true });
   } catch {
     return 0;
   }
-  await Promise.all(entries.map((name) => copyFile(join(publicDir, name), join(outDir, name))));
-  return entries.length;
+  let count = 0;
+  for (const entry of entries) {
+    const from = join(publicDir, entry.name);
+    const to = join(outDir, entry.name);
+    if (entry.isDirectory()) {
+      await mkdir(to, { recursive: true });
+      for (const child of await readdir(from)) {
+        await copyFile(join(from, child), join(to, child));
+        count += 1;
+      }
+    } else {
+      await copyFile(from, to);
+      count += 1;
+    }
+  }
+  return count;
 }
 
 async function build(): Promise<void> {
-  const [rawCss, logoSvg] = await Promise.all([
+  const [rawCss, animCss, logoSvg] = await Promise.all([
     readFile(join(projectRoot, 'src/styles.css'), 'utf8'),
+    readFile(join(projectRoot, 'src/styles-animation.css'), 'utf8'),
     readFile(join(repoRoot, 'assets/branding/logo_mark.svg'), 'utf8'),
   ]);
-  const css = cssVariables() + rawCss;
+  const css = cssVariables() + rawCss + animCss;
 
   await mkdir(outDir, { recursive: true });
+  const client = await clientAssets();
 
   for (const locale of locales) {
     const path = pathFor(locale);
     const dir = path === '/' ? outDir : join(outDir, path);
     await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, 'index.html'), renderDocument(locale, css, logoSvg), 'utf8');
+    await writeFile(
+      join(dir, 'index.html'),
+      renderDocument(locale, css, logoSvg, client),
+      'utf8',
+    );
   }
 
   await writeFile(join(outDir, 'sitemap.xml'), sitemapXml(), 'utf8');

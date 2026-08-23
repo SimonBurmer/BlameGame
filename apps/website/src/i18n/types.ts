@@ -25,6 +25,19 @@ export interface Feature {
   readonly body: string;
 }
 
+export interface Shot {
+  /** Basename in public/screenshots, without extension. */
+  readonly file: 'lobby' | 'round' | 'guessed' | 'reveal' | 'results';
+  readonly caption: string;
+  readonly alt: string;
+}
+
+export interface Stat {
+  readonly value: number;
+  readonly suffix: string;
+  readonly label: string;
+}
+
 export interface QandA {
   readonly question: string;
   readonly answer: string;
@@ -55,7 +68,15 @@ export interface Messages {
     readonly headline: string;
     readonly sub: string;
     readonly availability: string;
+    readonly primaryCta: string;
+    readonly primaryCtaEyebrow: string;
     readonly secondaryCta: string;
+  };
+  readonly stats: readonly [Stat, Stat, Stat];
+  readonly shots: {
+    readonly heading: string;
+    readonly sub: string;
+    readonly items: readonly Shot[];
   };
   readonly steps: {
     readonly heading: string;

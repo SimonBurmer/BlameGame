@@ -4,7 +4,7 @@ title: 'Crash on game start: GameController used after being disposed'
 status: In Progress
 assignee: []
 created_date: '2026-08-22 18:07'
-updated_date: '2026-08-22 18:14'
+updated_date: '2026-08-23 00:46'
 labels:
   - bug
   - flutter
@@ -39,13 +39,27 @@ A live trace is available. Two simulators are running under  with output streami
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-ROOT CAUSE FOUND (agent stopped before the fix landed).
+ROOT CAUSE FOUND (from a deterministic single-device repro, not the two-simulator session).
 
-Navigator.pushReplacement completes the route it replaces. So when the lobby pushReplacement's the game screen, HomeScreen._run's awaited Navigator.push resolves mid-hand-off and runs controller.dispose() - while GameScreen.initState is calling addListener on that same controller. Same shape applies to game -> results.
+Navigator.pushReplacement completes the REPLACED route's popped future. That is documented behaviour, not a quirk: the old route is removed and its future completes with the result (null by default).
 
-This is why two earlier unit-test repro attempts failed: the trigger is navigation/route completion, not a late async result. A socket event cannot reach a disposed controller (dispose closes the socket first) and an in-flight guess completing after dispose is harmless.
+So the chain is:
+1. home_screen.dart:65  await Navigator.push(LobbyScreen)  -- Home parks here holding the controller.
+2. lobby_screen.dart:64 Navigator.pushReplacement(GameScreen) on game_started.
+3. That completes Home's awaited future immediately, so home_screen.dart runs controller.dispose().
+4. game_screen.dart:46 _GameScreenState.initState calls c.addListener(_onChange) on the now-disposed controller.
 
-A failing widget test is committed on branch fix/task-46-controller-used-after-dispose (test/navigation_disposal_test.dart, commit 63a2cdb). It drives Home -> Lobby -> (RoundStarted) -> Game through a real Navigator and reproduces the exact production error. It also has a second test asserting the controller IS still disposed on a genuine unwind (back out of the lobby), so a fix cannot just delete the dispose call and leak the socket.
+Stack confirms step 4 exactly:
+  #2 ChangeNotifier.addListener (change_notifier.dart:273)
+  #3 _GameScreenState.initState (game_screen.dart:46)
 
-Still to do: the fix itself, plus red-green confirmation and the full test run.
+This is why the ticket's investigation stalled: it recorded the assumption 'lobby -> game and game -> results use pushReplacement, which should NOT resolve Home's push'. That assumption is backwards, and it is the whole bug. It also explains why both unit-test repro attempts failed - they probed async ordering (a late socket event, an in-flight guess), but the trigger is navigation, so nothing async is involved at all. The same applies to results_screen.dart:42, which pushReplacements again.
+
+Not fixing it here: this came up while capturing marketing screenshots (TASK-48), and the fix is a real design choice about who owns the controller's lifetime rather than a one-liner. The options, briefly:
+- Stop tying the controller's lifetime to the push future, and give the game flow a wrapper widget that creates the controller in initState and disposes it in dispose. Most correct, and it makes the lifetime independent of how the screens navigate.
+- Or keep push() for lobby -> game instead of pushReplacement, which fixes the disposal but changes what the back gesture does.
+
+REPRODUCTION, now one command and no manual tapping:
+  ./scripts/capture-app-screenshots.sh
+It populates a room over HTTP, drives one simulator into the game, and the red screen appears on the 'round' screenshot in build/app-screenshots/. Full trace in /tmp/crash-trace.log.
 <!-- SECTION:NOTES:END -->

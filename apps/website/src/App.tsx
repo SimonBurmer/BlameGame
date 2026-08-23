@@ -4,6 +4,8 @@ import { Features } from './components/Features';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { Hero } from './components/Hero';
+import { Shots } from './components/Shots';
+import { Stats } from './components/Stats';
 import { Steps } from './components/Steps';
 import type { Locale, Messages } from './i18n';
 
@@ -23,7 +25,9 @@ export function App({ locale, m, logoSvg }: AppProps) {
         <Header locale={locale} m={m} logoSvg={logoSvg} />
         <main id="main">
           <Hero m={m} logoSvg={logoSvg} />
+          <Stats m={m} />
           <Steps m={m} />
+          <Shots m={m} />
           <Features m={m} />
           <Faq m={m} />
           <Cta m={m} />

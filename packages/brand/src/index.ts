@@ -47,12 +47,15 @@ export const limits = {
 } as const;
 
 /**
- * Store links. Both are null until the app is actually listed — a landing page
- * that links to a store page that does not exist is worse than one that says
- * "not yet".
+ * Store links.
+ *
+ * `appStore` is intentionally an empty string: the button is on the page and
+ * wired up, but there is no listing behind it yet. Paste the URL here and it
+ * lights up everywhere at once. `playStore` stays null until there is an
+ * Android build to point at, and the button for it is not rendered.
  */
-export const stores: { readonly appStore: string | null; readonly playStore: string | null } = {
-  appStore: null,
+export const stores: { readonly appStore: string; readonly playStore: string | null } = {
+  appStore: '',
   playStore: null,
 };
 

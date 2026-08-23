@@ -28,8 +28,26 @@ export const de: Messages = {
     eyebrow: 'Partyspiel · 2–12 Leute · ein Handy pro Person',
     headline: 'Errate, wessen Foto auf dem Bildschirm ist.',
     sub: 'Alle werfen Fotos aus ihrer Galerie in einen Raum. Jede Runde taucht eines davon auf. Finde heraus, wem es gehört, bevor es jemand anderes tut — je schneller, desto mehr Punkte.',
-    availability: 'In Entwicklung. Noch in keinem Store.',
+    availability: 'Jetzt für iPhone',
+    primaryCta: 'App Store',
+    primaryCtaEyebrow: 'Laden im',
     secondaryCta: 'So läuft es ab',
+  },
+  stats: [
+    { value: 12, suffix: '', label: 'Leute pro Raum' },
+    { value: 10, suffix: '', label: 'Fotos pro Person' },
+    { value: 5, suffix: '', label: 'Zeichen im Code' },
+  ],
+  shots: {
+    heading: 'So sieht es aus',
+    sub: 'Direkt vom Handy, mitten im Spiel.',
+    items: [
+      { file: 'lobby', caption: 'Code vorlesen und zuschauen, wer reinkommt', alt: 'Die Lobby mit Spielcode und fünf beigetretenen Personen' },
+      { file: 'round', caption: 'Ein Foto, eine Uhr, fünf Verdächtige', alt: 'Eine laufende Runde mit Foto und den anderen Mitspielenden zur Auswahl' },
+      { file: 'guessed', caption: 'Festlegen, bevor die Zeit es tut', alt: 'Ein abgegebener Tipp mit hervorgehobener Person' },
+      { file: 'reveal', caption: 'Und dann die Auflösung', alt: 'Die Auflösung nennt, wem das Foto gehört' },
+      { file: 'results', caption: 'Jemand muss gewinnen', alt: 'Die Endrangliste mit Punkten für alle' },
+    ],
   },
   steps: {
     heading: 'Es passieren drei Dinge',
@@ -102,15 +120,15 @@ export const de: Messages = {
           'Die freiwillige Variante ohne Vorschau. Was die Zufallsauswahl aus deiner Galerie gezogen hat, geht direkt in den Raum — du siehst es zum ersten Mal, wenn es alle sehen.',
       },
       {
-        question: 'Wann kann ich es herunterladen?',
+        question: 'Was kostet es?',
         answer:
-          'Es ist noch in Entwicklung und es gibt noch keinen Store-Eintrag. Sobald es Links gibt, stehen sie auf dieser Seite.',
+          'Der Download ist kostenlos. Es gibt kein Konto und nichts einzurichten — Name eintippen, Code beitreten, spielen.',
       },
     ],
   },
   cta: {
-    heading: 'Noch nicht erschienen.',
-    body: 'Das Spiel entsteht offen. Sobald es im App Store und bei Google Play liegt, tauchen die Buttons genau hier auf.',
+    heading: 'Hol alle in einen Raum.',
+    body: 'Kostenlos. Kein Konto, kein Aufwand — nur ein vorgelesener Code und das, was ohnehin auf deinem Handy liegt.',
   },
   footer: {
     tagline: 'Errate, wessen Foto das ist.',

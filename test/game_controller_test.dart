@@ -40,6 +40,24 @@ Future<(GameController, FakeGameSocket, RecordingClient)> joinedController({
   return (controller, socket, recording);
 }
 
+/// A joined controller on millisecond timings, so heartbeat and retry tests
+/// run at test speed instead of waiting real seconds.
+Future<GameController> _heartbeatController(
+  ReconnectingSocketFactory sockets, {
+  List<Duration> backoff = const [Duration(milliseconds: 5)],
+  Duration heartbeat = const Duration(milliseconds: 20),
+}) async {
+  final recording = RecordingClient(join: _joinOk, snapshot: _snapshot);
+  final controller = GameController(
+    api: ApiClient(httpClient: recording.client, baseUrl: 'http://test'),
+    socketFactory: sockets.factory,
+    heartbeatInterval: heartbeat,
+    retryBackoff: backoff,
+  );
+  await controller.joinByCode('ABC12', 'Emma');
+  return controller;
+}
+
 void main() {
   group('joining', () {
     test('wires identity, roster, and socket', () async {
@@ -304,8 +322,18 @@ void main() {
     });
 
     test('reconnect re-seeds from the server and clears the error', () async {
-      final (c, socket, recording) = await joinedController();
-      socket.dropConnection();
+      // Fresh socket per connect: a reused fake stays closed after the drop,
+      // so the "reconnected" socket would report dead the instant we listen.
+      final recording = RecordingClient(join: _joinOk, snapshot: _snapshot);
+      final sockets = ReconnectingSocketFactory();
+      final c = GameController(
+        api: ApiClient(httpClient: recording.client, baseUrl: 'http://test'),
+        socketFactory: sockets.factory,
+        heartbeatInterval: Duration.zero,
+        retryBackoff: const [],
+      );
+      await c.joinByCode('ABC12', 'Emma');
+      sockets.latest.dropConnection();
       await pumpEventQueue();
       expect(c.connectionError, isNotNull);
 
@@ -323,6 +351,113 @@ void main() {
       c.dispose();
       await pumpEventQueue();
       expect(c.connectionError, isNull);
+    });
+  });
+
+  group('heartbeat', () {
+    test('pings on the interval while frames keep arriving', () async {
+      final sockets = ReconnectingSocketFactory();
+      final c = await _heartbeatController(sockets);
+      addTearDown(c.dispose);
+
+      // Answer each beat, as a live server would.
+      for (var i = 0; i < 3; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 12));
+        sockets.latest.emit(const UnknownEvent('pong'));
+        await pumpEventQueue();
+      }
+
+      expect(sockets.latest.pings, greaterThan(0));
+      expect(c.connectionError, isNull);
+    });
+
+    test('a silent interval is treated as a dead socket', () async {
+      final sockets = ReconnectingSocketFactory();
+      // No auto-retry here, so the failure is the heartbeat's alone.
+      final c = await _heartbeatController(sockets, backoff: const []);
+      addTearDown(c.dispose);
+
+      // Two ticks with nothing coming back: the first pings, the second finds
+      // no reply and declares the socket dead. The fake never answers.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      expect(c.connectionError, isNotNull);
+    });
+  });
+
+  group('auto-reconnect', () {
+    test('a drop reconnects on its own, without the player tapping RETRY',
+        () async {
+      final sockets = ReconnectingSocketFactory();
+      // Heartbeat off: this is about the drop, and a fake socket never answers
+      // a ping, so a live heartbeat would kill the reconnected socket too.
+      final c = await _heartbeatController(sockets, heartbeat: Duration.zero);
+      addTearDown(c.dispose);
+
+      sockets.latest.dropConnection();
+      await pumpEventQueue();
+      expect(c.connectionError, isNotNull);
+
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(c.connectionError, isNull);
+      // A fresh socket, not the closed one.
+      expect(sockets.sockets.length, 2);
+      expect(sockets.latest.closed, isFalse);
+    });
+
+    test('retries are bounded and the banner comes back when they run out',
+        () async {
+      final sockets = ReconnectingSocketFactory();
+      // The room goes unreachable after the join, so no retry can ever
+      // recover -- the only way to reach the end of the backoff list.
+      var roomIsUp = true;
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/join')) {
+          return http.Response(jsonEncode(_joinOk), 200);
+        }
+        if (!roomIsUp) return http.Response('{"detail":"down"}', 503);
+        return http.Response(jsonEncode(_snapshot), 200);
+      });
+      final c = GameController(
+        api: ApiClient(httpClient: client, baseUrl: 'http://test'),
+        socketFactory: sockets.factory,
+        heartbeatInterval: Duration.zero,
+        retryBackoff: const [
+          Duration(milliseconds: 5),
+          Duration(milliseconds: 5),
+        ],
+      );
+      await c.joinByCode('ABC12', 'Emma');
+      addTearDown(c.dispose);
+      roomIsUp = false;
+
+      sockets.latest.dropConnection();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+
+      // 1 initial + 2 retries, and then it stops rather than hammering on.
+      expect(sockets.sockets.length, 3);
+      expect(c.connectionError, isNotNull);
+      expect(c.isReconnecting, isFalse);
+    });
+
+    test('disposal cancels the pending retry', () async {
+      final sockets = ReconnectingSocketFactory();
+      final c = await _heartbeatController(
+        sockets,
+        backoff: const [Duration(milliseconds: 30)],
+      );
+
+      sockets.latest.dropConnection();
+      await pumpEventQueue();
+      expect(c.isReconnecting, isTrue);
+
+      c.dispose();
+      // Long enough for the retry to have fired. A live timer would reconnect
+      // on a disposed controller and throw.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+
+      expect(sockets.sockets.length, 1);
     });
   });
 

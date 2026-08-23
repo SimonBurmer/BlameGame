@@ -858,6 +858,28 @@ def test_websocket_accepts_a_lowercased_room_code(client):
         assert event["type"] == "player_joined"
 
 
+def test_websocket_answers_a_heartbeat_with_a_pong(client):
+    # A silently dropped mobile connection delivers no close frame, so the
+    # client can only tell the socket is dead by this reply never arriving.
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        ws.send_text('{"type":"ping"}')
+        assert ws.receive_json() == {"type": "pong"}
+
+
+def test_websocket_ignores_a_garbage_frame(client):
+    # A junk frame must not kill the player's feed.
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as ws:
+        ws.send_text("not json")
+        _join(client, code, "Jake")
+        assert ws.receive_json()["type"] == "player_joined"
+
+
 def test_websocket_rejects_a_non_player(client):
     code = client.post("/rooms").json()["code"]
     _join(client, code, "Emma")

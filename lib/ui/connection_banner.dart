@@ -40,6 +40,9 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
       return const SizedBox.shrink();
     }
     final scheme = Theme.of(context).colorScheme;
+    // An automatic retry is already queued, so offering RETRY would just be a
+    // button that duplicates work already under way.
+    final busy = _retrying || widget.controller.isReconnecting;
     return Material(
       color: scheme.errorContainer,
       child: SafeArea(
@@ -52,14 +55,14 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Connection lost',
+                  busy ? 'Reconnecting…' : 'Connection lost',
                   style: TextStyle(
                     color: scheme.onErrorContainer,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-              if (_retrying)
+              if (busy)
                 SizedBox(
                   width: 18,
                   height: 18,

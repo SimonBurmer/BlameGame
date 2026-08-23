@@ -81,7 +81,11 @@ jobs:
         run: |
           set -euo pipefail
           for f in apps/website/out/index.html apps/website/out/de/index.html; do
-            for needle in '<link rel="canonical"' 'hreflang="x-default"' \
+            # The hreflang needle is the value, not the attribute: Next emits
+            # the React property name, `hrefLang`. HTML attribute names are
+            # case-insensitive so a parser reads it as `hreflang`, but a
+            # case-sensitive grep for the attribute would not.
+            for needle in '<link rel="canonical"' 'x-default' \
                           'property="og:image"' 'application/ld+json' \
                           'SoftwareApplication' 'FAQPage' \
                           '/screenshots/round.jpg' '/photos/'; do
@@ -93,7 +97,7 @@ jobs:
           test -s apps/website/out/sitemap.xml
           test -s apps/website/out/robots.txt
           # Every screenshot the copy names has to actually be there.
-          for s in home lobby round guessed reveal results; do
+          for s in home lobby round reveal results; do
             test -s "apps/website/out/screenshots/$s.jpg"
           done
           echo "both locales carry canonical, hreflang, og:image, JSON-LD and the real screenshots"

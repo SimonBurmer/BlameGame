@@ -57,17 +57,17 @@ export const Timeline = ({
       ref={containerRef}
     >
       {(heading || sub) && (
-        <div className="max-w-7xl mx-auto pb-4 px-4 md:px-8 lg:px-10">
+        <div className="max-w-[88rem] mx-auto pb-10 px-6 lg:px-10">
           {heading}
           {sub}
         </div>
       )}
 
-      <div ref={ref} className="relative max-w-7xl mx-auto pb-10">
+      <div ref={ref} className="relative max-w-[88rem] mx-auto px-0 pb-10 lg:px-4">
         {data.map((item, index) => (
           <div
             key={index}
-            className="flex justify-start pt-10 md:gap-10 md:pt-24"
+            className="flex justify-start pt-14 md:gap-10 md:pt-28"
           >
             <div className="sticky flex flex-col md:flex-row z-40 items-center top-32 self-start md:w-32 md:shrink-0">
               <div className="h-10 absolute left-3 md:left-3 w-10 rounded-full bg-ink flex items-center justify-center">

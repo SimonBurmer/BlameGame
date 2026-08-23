@@ -37,21 +37,15 @@ export const en: Messages = {
     suspects: ['Mara', 'Jonas', 'Ada', 'Leo', 'yours'],
     scrollCue: 'Scroll',
   },
-  moment: {
-    heading: 'Ten seconds. One photo. Everybody looking at everybody.',
-    sub: 'A picture nobody has thought about in two years goes up on five screens at once, and the clock starts. Somebody in the room took it. The scoring rewards the person who works out who first.',
-    caption: 'One round, three phones.',
-  },
   stats: [
+    { value: 10000, suffix: '+', label: 'downloads' },
     { value: 12, suffix: '', label: 'players in a room' },
     { value: 10, suffix: '', label: 'photos each' },
-    { value: 5, suffix: '', label: 'characters in a code' },
   ],
   shots: {
     items: [
       { file: 'lobby', caption: 'Read out the code, watch everyone land', alt: 'The lobby, showing a game code and five players who have joined' },
       { file: 'round', caption: 'One photo, one clock, five suspects', alt: 'A round in progress with a photo and the other players to choose from' },
-      { file: 'guessed', caption: 'Lock it in before the clock does', alt: 'A guess submitted, with the chosen player highlighted' },
       { file: 'reveal', caption: 'And then you find out', alt: 'The reveal, naming whose photo it was' },
       { file: 'results', caption: 'Somebody has to win', alt: 'The final leaderboard with scores for every player' },
     ],
@@ -109,6 +103,25 @@ export const en: Messages = {
         body: 'HEIC, JPEG and PNG all upload. No converting, no “unsupported format” halfway through a game.',
       },
     ],
+  },
+  privacy: {
+    heading: 'The photos leave when the game does.',
+    sub: 'A game built on other people’s camera rolls only works if nobody has to think twice about joining one. So there is almost nothing to collect, and what does get uploaded does not stay.',
+    items: [
+      {
+        title: 'Deleted when the room closes',
+        body: 'The photos you contribute sit on the server for the length of the game and nowhere else. When the host ends the room they are deleted with it, and a room everybody simply walked away from is removed automatically, along with every photo in it.',
+      },
+      {
+        title: 'Nothing to sign up for, nothing to track',
+        body: 'GDPR by design: no account, no email address, no profile, no advertising identifier. The website sets no cookies and runs no analytics. There is no history of what you played, because none is kept.',
+      },
+      {
+        title: 'You see the shuffle before it leaves',
+        body: 'The app picks at random, then shows you exactly what it picked so you can reshuffle. Nothing is uploaded until you are happy with it — unless you turn that off yourself in Hardcore mode.',
+      },
+    ],
+    shotAlt: 'The lobby, where the app says you will see the picked photos and can reshuffle before sharing',
   },
   faq: {
     heading: 'Questions',

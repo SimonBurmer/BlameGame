@@ -19,7 +19,7 @@ export interface Step {
   readonly title: string;
   readonly body: string;
   /** Screenshot shown beside the step. */
-  readonly shot: 'home' | 'lobby' | 'round' | 'guessed' | 'reveal' | 'results';
+  readonly shot: 'home' | 'lobby' | 'round' | 'reveal' | 'results';
   readonly shotAlt: string;
 }
 
@@ -30,15 +30,21 @@ export interface Feature {
 
 export interface Shot {
   /** Basename in public/screenshots, without extension. */
-  readonly file: 'home' | 'lobby' | 'round' | 'guessed' | 'reveal' | 'results';
+  readonly file: 'home' | 'lobby' | 'round' | 'reveal' | 'results';
   readonly caption: string;
   readonly alt: string;
 }
 
 export interface Stat {
+  /** Counted up to. Formatted per locale, so the separator is not stored here. */
   readonly value: number;
   readonly suffix: string;
   readonly label: string;
+}
+
+export interface Assurance {
+  readonly title: string;
+  readonly body: string;
 }
 
 export interface QandA {
@@ -85,12 +91,6 @@ export interface Messages {
     readonly suspects: readonly string[];
     readonly scrollCue: string;
   };
-  /** The scroll-driven phone, between the hero and the explanation. */
-  readonly moment: {
-    readonly heading: string;
-    readonly sub: string;
-    readonly caption: string;
-  };
   readonly stats: readonly [Stat, Stat, Stat];
   /**
    * Alt text and captions for the screenshots, keyed by file. The screens are
@@ -110,6 +110,13 @@ export interface Messages {
     readonly heading: string;
     readonly sub: string;
     readonly items: readonly Feature[];
+  };
+  /** What happens to the photos, and what the app does not collect. */
+  readonly privacy: {
+    readonly heading: string;
+    readonly sub: string;
+    readonly items: readonly [Assurance, Assurance, Assurance];
+    readonly shotAlt: string;
   };
   readonly faq: {
     readonly heading: string;

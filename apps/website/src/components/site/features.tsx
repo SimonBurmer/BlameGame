@@ -15,6 +15,7 @@ import { BentoGrid, BentoGridItem } from '@/components/ui/bento-grid';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 import { Phone } from '@/components/site/phone';
 import { photos } from '@/lib/photos';
+import { band, cn, shell } from '@/lib/utils';
 import type { Messages } from '@/i18n';
 
 const icons: ComponentType<IconProps>[] = [
@@ -58,11 +59,11 @@ export function Features({ m }: { m: Messages }) {
   const altFor = (file: string) => m.shots.items.find((s) => s.file === file)?.alt ?? '';
 
   return (
-    <section id="features" className="relative mx-auto max-w-7xl px-6 py-24 sm:py-32">
+    <section id="features" className={cn(shell, band, 'relative')}>
       <h2 className="display max-w-3xl text-4xl sm:text-6xl">{m.features.heading}</h2>
       <p className="mt-4 max-w-xl text-sm text-white/55 sm:text-base">{m.features.sub}</p>
 
-      <BentoGrid className="mt-14 md:auto-rows-[16rem]">
+      <BentoGrid className="mt-14 max-w-none md:auto-rows-[16rem]">
         {m.features.items.map((item, i) => {
           const Icon = icons[i % icons.length]!;
           // Only the wide cells get a picture; a phone in a one-column cell is

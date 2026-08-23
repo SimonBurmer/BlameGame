@@ -3,9 +3,9 @@ import { Faq } from '@/components/site/faq';
 import { Features } from '@/components/site/features';
 import { Footer } from '@/components/site/footer';
 import { Hero } from '@/components/site/hero';
-import { Moment } from '@/components/site/moment';
-import { Numbers } from '@/components/site/numbers';
+import { Privacy } from '@/components/site/privacy';
 import { SiteNav } from '@/components/site/site-nav';
+import { Stats } from '@/components/site/stats';
 import { Steps } from '@/components/site/steps';
 import { locales, messages, type Locale } from '@/i18n';
 import { jsonLd, schemasFor } from '@/lib/seo';
@@ -36,10 +36,10 @@ export default async function Page({ params }: { params: Promise<{ lang?: string
 
       <main id="main">
         <Hero m={m} />
-        <Numbers m={m} />
-        <Moment m={m} />
+        <Stats m={m} />
         <Steps m={m} />
         <Features m={m} />
+        <Privacy m={m} />
         <Faq m={m} />
         <Cta m={m} />
       </main>

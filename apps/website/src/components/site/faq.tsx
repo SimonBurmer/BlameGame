@@ -1,3 +1,4 @@
+import { band, cn, shell } from '@/lib/utils';
 import type { Messages } from '@/i18n';
 
 /**
@@ -8,9 +9,9 @@ import type { Messages } from '@/i18n';
  */
 export function Faq({ m }: { m: Messages }) {
   return (
-    <section id="faq" className="mx-auto max-w-3xl px-6 py-24 sm:py-32">
-      <h2 className="display text-4xl sm:text-6xl">{m.faq.heading}</h2>
-      <div className="mt-12 divide-y divide-white/10 border-y border-white/10">
+    <section id="faq" className={cn(shell, band)}>
+      <h2 className="display text-center text-4xl sm:text-6xl">{m.faq.heading}</h2>
+      <div className="mx-auto mt-14 max-w-3xl divide-y divide-white/10 border-y border-white/10">
         {m.faq.items.map((item) => (
           <details key={item.question} className="group py-5">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-left text-base font-medium text-white/90 transition-colors marker:content-none hover:text-white sm:text-lg">

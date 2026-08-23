@@ -2,6 +2,7 @@
 
 import { Timeline } from '@/components/ui/timeline';
 import { Phone } from '@/components/site/phone';
+import { band, cn } from '@/lib/utils';
 import type { Messages } from '@/i18n';
 
 /**
@@ -13,7 +14,7 @@ export function Steps({ m }: { m: Messages }) {
   const data = m.steps.items.map((step, i) => ({
     title: String(i + 1).padStart(2, '0'),
     content: (
-      <div className="flex flex-col gap-8 pb-4 md:flex-row md:items-center md:gap-12">
+      <div className="flex flex-col gap-8 pb-4 md:flex-row md:items-start md:gap-12">
         <div className="max-w-xl">
           <h3 className="display text-2xl sm:text-3xl">{step.title}</h3>
           <p className="mt-4 text-sm leading-relaxed text-white/60 sm:text-base">{step.body}</p>
@@ -24,7 +25,7 @@ export function Steps({ m }: { m: Messages }) {
   }));
 
   return (
-    <section id="how" className="relative">
+    <section id="how" className={cn(band, 'relative')}>
       <Timeline
         data={data}
         heading={<h2 className="display text-4xl sm:text-6xl">{m.steps.heading}</h2>}

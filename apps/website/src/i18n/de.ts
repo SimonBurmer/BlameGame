@@ -37,21 +37,15 @@ export const de: Messages = {
     suspects: ['Mara', 'Jonas', 'Ada', 'Leo', 'dir'],
     scrollCue: 'Scrollen',
   },
-  moment: {
-    heading: 'Zehn Sekunden. Ein Foto. Und alle schauen sich gegenseitig an.',
-    sub: 'Ein Bild, an das seit zwei Jahren niemand mehr gedacht hat, erscheint gleichzeitig auf fünf Bildschirmen, und die Uhr läuft. Jemand hier im Raum hat es aufgenommen. Punkte gibt es dafür, das als Erste:r herauszufinden.',
-    caption: 'Eine Runde, drei Handys.',
-  },
   stats: [
+    { value: 10000, suffix: '+', label: 'Downloads' },
     { value: 12, suffix: '', label: 'Leute pro Raum' },
     { value: 10, suffix: '', label: 'Fotos pro Person' },
-    { value: 5, suffix: '', label: 'Zeichen im Code' },
   ],
   shots: {
     items: [
       { file: 'lobby', caption: 'Code vorlesen und zuschauen, wer reinkommt', alt: 'Die Lobby mit Spielcode und fünf beigetretenen Personen' },
       { file: 'round', caption: 'Ein Foto, eine Uhr, fünf Verdächtige', alt: 'Eine laufende Runde mit Foto und den anderen Mitspielenden zur Auswahl' },
-      { file: 'guessed', caption: 'Festlegen, bevor die Zeit es tut', alt: 'Ein abgegebener Tipp mit hervorgehobener Person' },
       { file: 'reveal', caption: 'Und dann die Auflösung', alt: 'Die Auflösung nennt, wem das Foto gehört' },
       { file: 'results', caption: 'Jemand muss gewinnen', alt: 'Die Endrangliste mit Punkten für alle' },
     ],
@@ -109,6 +103,25 @@ export const de: Messages = {
         body: 'HEIC, JPEG und PNG lassen sich alle hochladen. Kein Umwandeln, kein „Format nicht unterstützt“ mitten im Spiel.',
       },
     ],
+  },
+  privacy: {
+    heading: 'Die Fotos gehen, wenn das Spiel geht.',
+    sub: 'Ein Spiel mit den Galerien anderer Leute funktioniert nur, wenn niemand lange überlegen muss, ob er mitspielt. Deshalb gibt es fast nichts zu sammeln — und was hochgeladen wird, bleibt nicht.',
+    items: [
+      {
+        title: 'Gelöscht, sobald der Raum schließt',
+        body: 'Deine Fotos liegen für die Dauer der Partie auf dem Server und sonst nirgends. Beendet die Gastgeberin den Raum, werden sie mit ihm gelöscht — und ein Raum, aus dem einfach alle verschwunden sind, wird automatisch entfernt, samt aller Fotos darin.',
+      },
+      {
+        title: 'Nichts anzumelden, nichts zu tracken',
+        body: 'DSGVO von Anfang an mitgedacht: kein Konto, keine E-Mail-Adresse, kein Profil, keine Werbe-ID. Die Website setzt keine Cookies und nutzt keine Analyse-Tools. Es gibt keinen Verlauf deiner Partien, weil keiner gespeichert wird.',
+      },
+      {
+        title: 'Du siehst die Auswahl, bevor sie rausgeht',
+        body: 'Die App wählt zufällig aus und zeigt dir dann genau, was sie gewählt hat — du kannst neu mischen. Hochgeladen wird erst, wenn es für dich passt. Es sei denn, du schaltest das im Hardcore-Modus selbst ab.',
+      },
+    ],
+    shotAlt: 'Die Lobby, in der die App darauf hinweist, dass du die ausgewählten Fotos siehst und vor dem Teilen neu mischen kannst',
   },
   faq: {
     heading: 'Fragen',

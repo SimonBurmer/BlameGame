@@ -55,7 +55,7 @@ export function SiteNav({ locale, m }: { locale: Locale; m: Messages }) {
 
   return (
     <Navbar className="fixed top-0 inset-x-0 z-50 pt-4">
-      <NavBody className="rounded-full border border-white/10 bg-ink/70 backdrop-blur-md">
+      <NavBody className="max-w-[88rem] rounded-full border border-white/10 bg-ink/70 px-6 backdrop-blur-md">
         <a href={pathFor(locale)} className="relative z-20 shrink-0 px-2">
           <Wordmark />
         </a>

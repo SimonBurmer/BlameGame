@@ -19,12 +19,17 @@ than a list of features:
 | Section | What it does |
 | --- | --- |
 | Hero | The wall of everyone's photos, on an angle, with the question over it |
-| Numbers | The three limits the game actually enforces |
-| The moment | Scrolling tips a screen flat: one round, on three phones |
+| Numbers | Downloads, room size, accounts needed |
 | Three things happen | The rules, on a rail that fills in as you pass it |
 | What is in it | Features, two of them holding a real screen |
+| GDPR | What happens to the photos, and what is never collected |
 | Questions | FAQ |
 | Get everyone in a room | The name, drawn; then the button |
+
+Every section uses the same content column and the same vertical rhythm —
+`shell` and `band` in `src/lib/utils.ts`. The navbar is given `shell` too and
+keeps that width at every scroll position, so nothing on the page is narrower
+than the header above it.
 
 ## Everything on it is real
 
@@ -82,6 +87,16 @@ Two consequences worth knowing:
 language and not the other is a compile error, and `next build` runs `tsc`
 before it renders anything.
 
+## The GDPR section is a promise the code has to keep
+
+Every claim in it was checked against the backend and is true today:
+`store.delete_room` fires `on_evict`, which `backend/app/main.py` wires to
+`_delete_room_uploads`, so ending a room deletes its photos; a room nobody has
+touched for `ROOM_TTL_SECONDS` (six hours) is swept the same way. There is no
+account system, the site sets no cookies and it runs no analytics.
+
+If any of that changes, the section is wrong and has to change with it.
+
 ## SEO
 
 Per-locale title and description, canonical, hreflang for both plus
@@ -102,6 +117,9 @@ and a `<noscript>` rule reveals the pieces that fade themselves in.
 - The copy says the app is on the App Store. **It is not.** `stores.appStore`
   in `packages/brand` is an empty string, so the button renders but is not a
   link; fill it in and every one of them becomes real at once.
+- **"10,000+ downloads" is invented**, for the same reason. It is in the copy
+  only — never in the JSON-LD, because fabricated structured data is how a site
+  earns a manual action instead of a rich result. Make it true or delete it.
 - `siteOrigin` is `https://blamegame.app`, which nobody owns yet. Every
   canonical, hreflang and sitemap URL is built from it.
 - There is no Impressum and no Datenschutzerklärung. The site sets no cookies

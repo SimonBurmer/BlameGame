@@ -6,6 +6,7 @@ import { TextGenerateEffect } from '@/components/ui/text-generate-effect';
 import { ThreeDMarquee } from '@/components/ui/3d-marquee';
 import { AppStoreButton } from '@/components/site/app-store-button';
 import { photos } from '@/lib/photos';
+import { cn, shell } from '@/lib/utils';
 import type { Messages } from '@/i18n';
 
 /**
@@ -41,7 +42,7 @@ export function Hero({ m }: { m: Messages }) {
         duration={9}
       />
 
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-6 pt-36 pb-28 sm:pt-40">
+      <div className={cn(shell, 'relative z-10 pt-40 pb-32 sm:pt-48')}>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
           <p className="font-mono text-[0.7rem] tracking-[0.18em] text-accent uppercase sm:text-xs sm:tracking-[0.28em]">
             {m.hero.eyebrow}
@@ -55,7 +56,7 @@ export function Hero({ m }: { m: Messages }) {
           </p>
         </div>
 
-        <h1 className="display mt-6 max-w-4xl text-[2.75rem] leading-[0.95] sm:text-6xl lg:text-[5.5rem]">
+        <h1 className="display mt-6 max-w-5xl text-[2.75rem] leading-[0.95] sm:text-6xl lg:text-[6rem]">
           {m.hero.headline}
         </h1>
 

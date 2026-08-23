@@ -1,12 +1,13 @@
 import { app } from '@blame-game/brand';
 
 import { LogoMark } from '@/components/site/logo';
+import { cn, shell } from '@/lib/utils';
 import { locales, pathFor, type Locale, type Messages } from '@/i18n';
 
 export function Footer({ locale, m }: { locale: Locale; m: Messages }) {
   return (
-    <footer className="border-t border-white/10 px-6 py-14">
-      <div className="mx-auto flex max-w-6xl flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+    <footer className="border-t border-white/10 py-14">
+      <div className={cn(shell, 'flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between')}>
         <div>
           <div className="flex items-center gap-3">
             <LogoMark className="h-8 w-8" />

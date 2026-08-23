@@ -169,61 +169,21 @@ class _HomeScreenState extends State<HomeScreen> {
     IconData icon, {
     bool caps = false,
   }) {
+    final white = context.colors.onSurfaceStrong;
     return TextField(
       controller: controller,
       textCapitalization:
           caps ? TextCapitalization.characters : TextCapitalization.words,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: white),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
-        prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.6)),
+        hintStyle: TextStyle(color: white.withValues(alpha: 0.4)),
+        prefixIcon: Icon(icon, color: white.withValues(alpha: 0.6)),
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.08),
+        fillColor: white.withValues(alpha: 0.08),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
-        ),
-      ),
-    );
-  }
-
-  Widget _primaryButton(String label, IconData icon, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon),
-        label: Text(label,
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, letterSpacing: 2)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFE94560),
-          foregroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-    );
-  }
-
-  Widget _secondaryButton(String label, IconData icon, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, color: Colors.white),
-        label: Text(label,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2)),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

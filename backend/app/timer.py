@@ -55,8 +55,11 @@ class RoundDriver:
         self._epoch = room.epoch
 
     def _photo_dict(self) -> Dict:
+        # No owner_id: it is the answer players are about to guess, and every
+        # connected client can read this frame. Same rule as _room_dict in
+        # main.py -- round_revealed is the first thing that discloses it.
         photo = current_photo(self.room)
-        return {"id": photo.id, "owner_id": photo.owner_id, "url": photo.url}
+        return {"id": photo.id, "url": photo.url}
 
     def _still_ours(self, round_index: Optional[int] = None) -> bool:
         """True while the room is still running the game (and round) we drive.

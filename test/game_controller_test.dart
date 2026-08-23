@@ -629,4 +629,131 @@ void main() {
       expect(c.isHost, isTrue);
     });
   });
+
+  group('mid-game state reconstruction', () {
+    /// A controller joined into a room whose snapshot reports [state].
+    Future<(GameController, RecordingClient)> joinedInto(
+      String state, {
+      Map<String, dynamic>? round,
+    }) async {
+      final recording = RecordingClient(
+        join: _joinOk,
+        snapshot: {
+          ..._snapshot,
+          'state': state,
+          'round': ?round,
+        },
+      );
+      final c = GameController(
+        api: ApiClient(httpClient: recording.client, baseUrl: 'http://test'),
+        socketFactory: fakeSocketFactory(FakeGameSocket()),
+      );
+      await c.joinByCode('ABC12', 'Emma');
+      return (c, recording);
+    }
+
+    test('a lobby snapshot leaves the controller in the lobby', () async {
+      final (c, _) = await joinedInto('lobby');
+      expect(c.phase, GamePhase.lobby);
+      expect(c.currentPhoto, isNull);
+    });
+
+    test('joining mid-round lands in the round, not the lobby', () async {
+      final (c, recording) = await joinedInto('in_round', round: {
+        'index': 3,
+        'photo': {'id': 'ph9', 'url': '/9.jpg'},
+        'ends_at': 1700000000500,
+        'has_guessed': false,
+      });
+
+      expect(c.phase, GamePhase.inRound);
+      expect(c.roundIndex, 3);
+      expect(c.currentPhoto?.url, '/9.jpg');
+      expect(c.roundEndsAt, 1700000000500);
+      expect(c.hasGuessedThisRound, isFalse);
+      // Without the owner there is no answer to leak, so the reveal banner
+      // stays empty until round_revealed says otherwise.
+      expect(c.revealedOwnerId, isNull);
+      // The snapshot must be scoped to us, or has_guessed is meaningless.
+      expect(
+        recording.requests.last.url.queryParameters['player_id'],
+        'me',
+      );
+    });
+
+    test('a guess already spent is not offered again', () async {
+      final (c, recording) = await joinedInto('in_round', round: {
+        'index': 0,
+        'photo': {'id': 'ph', 'url': '/a.jpg'},
+        'ends_at': 1,
+        'has_guessed': true,
+      });
+
+      expect(c.hasGuessedThisRound, isTrue);
+      // And the guard holds: a second attempt never reaches the server, which
+      // would reject it anyway.
+      await c.guess('p2');
+      expect(recording.countEndingWith('/guess'), 0);
+    });
+
+    test('joining during the reveal shows the answer', () async {
+      final (c, _) = await joinedInto('revealing', round: {
+        'index': 1,
+        'photo': {'id': 'ph', 'owner_id': 'p2', 'url': '/a.jpg'},
+        'ends_at': null,
+        'has_guessed': true,
+      });
+
+      expect(c.phase, GamePhase.revealed);
+      expect(c.revealedOwnerId, 'p2');
+      expect(c.revealedOwnerName, 'Jake');
+      expect(c.roundEndsAt, isNull);
+    });
+
+    test('joining after the game ends lands on the results', () async {
+      final (c, _) = await joinedInto('finished', round: {
+        'index': 4,
+        'photo': {'id': 'ph', 'owner_id': 'p2', 'url': '/a.jpg'},
+        'ends_at': null,
+        'has_guessed': true,
+      });
+
+      expect(c.phase, GamePhase.finished);
+      // Rankings come off the roster the snapshot already carries — there is
+      // no game_finished event left to wait for.
+      expect(c.finalRankings.map((p) => p.id), ['me', 'p2']);
+    });
+
+    test('reconnecting mid-round restores the round, not the lobby', () async {
+      final recording = RecordingClient(
+        join: _joinOk,
+        snapshot: {
+          ..._snapshot,
+          'state': 'in_round',
+          'round': {
+            'index': 2,
+            'photo': {'id': 'ph', 'url': '/a.jpg'},
+            'ends_at': 1700000000500,
+            'has_guessed': true,
+          },
+        },
+      );
+      final socket = FakeGameSocket();
+      final c = GameController(
+        api: ApiClient(httpClient: recording.client, baseUrl: 'http://test'),
+        socketFactory: fakeSocketFactory(socket),
+      );
+      await c.joinByCode('ABC12', 'Emma');
+      socket.dropConnection();
+      await pumpEventQueue();
+
+      await c.reconnect();
+
+      expect(c.connectionError, isNull);
+      expect(c.phase, GamePhase.inRound);
+      expect(c.roundIndex, 2);
+      expect(c.roundEndsAt, 1700000000500);
+      expect(c.hasGuessedThisRound, isTrue);
+    });
+  });
 }

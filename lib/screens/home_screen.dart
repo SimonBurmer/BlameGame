@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../state/game_controller.dart';
+import '../theme/app_theme.dart';
+import '../ui/app_buttons.dart';
 import '../ui/error_text.dart';
+import '../ui/gradient_scaffold.dart';
 import 'lobby_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -71,91 +74,89 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(28),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(height: 20),
-                  Image.asset('assets/branding/logo_mark.png',
-                      width: 96, height: 96),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'BLAME\nGAME',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 44,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: 4,
-                      height: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Guess whose photo it is!',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.white.withValues(alpha: 0.7),
-                    ),
-                  ),
-                  const SizedBox(height: 36),
-                  _textField(_nameController, 'Your name', Icons.person),
-                  const SizedBox(height: 28),
-                  if (_error != null) ...[
-                    Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Color(0xFFE94560)),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  if (_busy)
-                    const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(color: Color(0xFFE94560)),
-                    )
-                  else ...[
-                    _primaryButton('CREATE GAME', Icons.add, _createRoom),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: Divider(
-                                color: Colors.white.withValues(alpha: 0.2))),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text('OR JOIN',
-                              style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.4),
-                                  fontSize: 12,
-                                  letterSpacing: 2)),
-                        ),
-                        Expanded(
-                            child: Divider(
-                                color: Colors.white.withValues(alpha: 0.2))),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    _textField(_codeController, 'Game code', Icons.tag,
-                        caps: true),
-                    const SizedBox(height: 16),
-                    _secondaryButton('JOIN GAME', Icons.login, _joinRoom),
-                  ],
-                ],
+    final colors = context.colors;
+    final text = Theme.of(context).textTheme;
+    return GradientScaffold(
+      gradient: AppGradient.diagonal,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 20),
+              Image.asset('assets/branding/logo_mark.png',
+                  width: 96, height: 96),
+              const SizedBox(height: 16),
+              Text(
+                'BLAME\nGAME',
+                textAlign: TextAlign.center,
+                style: text.displayLarge,
               ),
-            ),
+              const SizedBox(height: 8),
+              Text(
+                'Guess whose photo it is!',
+                style: TextStyle(fontSize: 15, color: colors.onSurfaceMuted),
+              ),
+              const SizedBox(height: 36),
+              _textField(_nameController, 'Your name', Icons.person),
+              const SizedBox(height: 28),
+              if (_error != null) ...[
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.brand),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_busy)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: CircularProgressIndicator(color: colors.brand),
+                )
+              else ...[
+                PrimaryButton(
+                  label: 'CREATE GAME',
+                  icon: Icons.add,
+                  onPressed: _createRoom,
+                  height: 56,
+                  radius: 16,
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                        child: Divider(
+                            color: colors.onSurfaceStrong
+                                .withValues(alpha: 0.2))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('OR JOIN',
+                          style: TextStyle(
+                              color: colors.onSurfaceStrong
+                                  .withValues(alpha: 0.4),
+                              fontSize: 12,
+                              letterSpacing: 2)),
+                    ),
+                    Expanded(
+                        child: Divider(
+                            color: colors.onSurfaceStrong
+                                .withValues(alpha: 0.2))),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _textField(_codeController, 'Game code', Icons.tag,
+                    caps: true),
+                const SizedBox(height: 16),
+                SecondaryButton(
+                  label: 'JOIN GAME',
+                  icon: Icons.login,
+                  onPressed: _joinRoom,
+                  height: 52,
+                  radius: 16,
+                ),
+              ],
+            ],
           ),
         ),
       ),
@@ -168,61 +169,21 @@ class _HomeScreenState extends State<HomeScreen> {
     IconData icon, {
     bool caps = false,
   }) {
+    final white = context.colors.onSurfaceStrong;
     return TextField(
       controller: controller,
       textCapitalization:
           caps ? TextCapitalization.characters : TextCapitalization.words,
-      style: const TextStyle(color: Colors.white),
+      style: TextStyle(color: white),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
-        prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.6)),
+        hintStyle: TextStyle(color: white.withValues(alpha: 0.4)),
+        prefixIcon: Icon(icon, color: white.withValues(alpha: 0.6)),
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.08),
+        fillColor: white.withValues(alpha: 0.08),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
-        ),
-      ),
-    );
-  }
-
-  Widget _primaryButton(String label, IconData icon, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon),
-        label: Text(label,
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, letterSpacing: 2)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFE94560),
-          foregroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-      ),
-    );
-  }
-
-  Widget _secondaryButton(String label, IconData icon, VoidCallback onTap) {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, color: Colors.white),
-        label: Text(label,
-            style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2)),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );

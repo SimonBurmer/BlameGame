@@ -36,7 +36,7 @@ from app.game import (
     start_game,
     submit_guess,
 )
-from app.models import Photo, Player, Room
+from app.models import Player, Room, RoomState
 from app.store import RoomNotFound, store
 from app.timer import RoundDriver
 
@@ -183,12 +183,8 @@ def _player_dict(p: Player, room: Room | None = None) -> dict:
     return d
 
 
-def _photo_dict(photo: Photo) -> dict:
-    return {"id": photo.id, "owner_id": photo.owner_id, "url": photo.url}
-
-
-def _room_dict(room: Room) -> dict:
-    return {
+def _room_dict(room: Room, player_id: str | None = None) -> dict:
+    d = {
         "code": room.code,
         "state": room.state.value,
         "current_round": room.current_round,
@@ -199,6 +195,28 @@ def _room_dict(room: Room) -> dict:
         "hardcore": room.hardcore,
         "players": [_player_dict(p, room) for p in room.players],
     }
+    if room.rounds and room.state is not RoomState.LOBBY:
+        rnd = room.rounds[room.current_round]
+        revealed = room.state is not RoomState.IN_ROUND
+        photo = {"id": rnd.photo.id, "url": rnd.photo.url}
+        # The owner is the answer players are guessing, so it is withheld while
+        # the round is live — matching round_revealed, which is the first event
+        # that discloses it. A reconnecting client that got it here would be
+        # handed a free correct guess.
+        if revealed:
+            photo["owner_id"] = rnd.photo.owner_id
+        d["round"] = {
+            "index": rnd.index,
+            "photo": photo,
+            # Epoch ms, same units and same server authority as round_started;
+            # the client derives remaining time as this minus now().
+            "ends_at": None if revealed or rnd.ends_at is None else int(rnd.ends_at * 1000),
+            # So a player who already guessed this round before dropping out
+            # doesn't come back with a fresh guess (the server would reject it
+            # anyway; this keeps the UI honest instead of offering the button).
+            "has_guessed": player_id is not None and player_id in rnd.guesses,
+        }
+    return d
 
 
 def _get_room(code: str) -> Room:
@@ -288,8 +306,11 @@ def get_photo(code: str, filename: str) -> FileResponse:
 
 
 @app.get("/rooms/{code}")
-def get_room(code: str) -> dict:
-    return _room_dict(_get_room(code))
+def get_room(code: str, player_id: str | None = None) -> dict:
+    # player_id is optional and only scopes the caller's own view (whether they
+    # already guessed this round). It grants nothing, so an absent or bogus one
+    # simply means "no per-player detail".
+    return _room_dict(_get_room(code), player_id)
 
 
 @app.post("/rooms/{code}/settings")

@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import '../config.dart';
 import '../models/game_models.dart';
 import '../state/game_controller.dart';
+import '../theme/app_theme.dart';
 import '../ui/connection_banner.dart';
 import '../ui/error_text.dart';
+import '../ui/gradient_scaffold.dart';
+import '../ui/pill_badge.dart';
 import '../ui/result_banner.dart';
 import '../ui/player_cosmetics.dart';
 import 'results_screen.dart';
@@ -136,73 +139,63 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF1A1A2E), Color(0xFF0F3460)],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              ConnectionBanner(controller: c),
-              _topBar(),
-              const SizedBox(height: 8),
-              _timerBar(),
-              const SizedBox(height: 16),
-              Expanded(child: _photoArea()),
-              const SizedBox(height: 16),
-              if (c.phase == GamePhase.revealed) _resultBanner(),
-              if (c.phase == GamePhase.inRound && c.hasGuessedThisRound)
-                _instantResultBanner(),
-              if (c.phase == GamePhase.inRound) _guessButtons(),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
+    return GradientScaffold(
+      gradient: AppGradient.verticalTwoStop,
+      child: Column(
+        children: [
+          ConnectionBanner(controller: c),
+          _topBar(),
+          const SizedBox(height: 8),
+          _timerBar(),
+          const SizedBox(height: 16),
+          Expanded(child: _photoArea()),
+          const SizedBox(height: 16),
+          if (c.phase == GamePhase.revealed) _resultBanner(),
+          if (c.phase == GamePhase.inRound && c.hasGuessedThisRound)
+            _instantResultBanner(),
+          if (c.phase == GamePhase.inRound) _guessButtons(),
+          const SizedBox(height: 16),
+        ],
       ),
     );
   }
 
   Widget _topBar() {
     final myScore = c.me?.score ?? 0;
+    final colors = context.colors;
+    const pillPadding =
+        EdgeInsets.symmetric(horizontal: 14, vertical: 6);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
+          PillBadge(
+            color: colors.onSurfaceStrong,
+            fillAlpha: 0.1,
+            radius: 20,
+            padding: pillPadding,
             child: Text(
               'Round ${c.roundIndex + 1}',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: colors.onSurfaceStrong,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE94560).withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(20),
-            ),
+          PillBadge(
+            color: colors.brand,
+            radius: 20,
+            padding: pillPadding,
             child: Row(
               children: [
-                const Icon(Icons.star, color: Color(0xFFFFD700), size: 18),
+                Icon(Icons.star, color: colors.gold, size: 18),
                 const SizedBox(width: 4),
                 Text(
                   '$myScore',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: colors.onSurfaceStrong,
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                   ),
@@ -217,9 +210,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   Widget _timerBar() {
     final progress = c.roundSeconds == 0 ? 0.0 : _timeLeft / c.roundSeconds;
-    final color = _timeLeft <= 3
-        ? const Color(0xFFE94560)
-        : const Color(0xFF4ECDC4);
+    final colors = context.colors;
+    final color = _timeLeft <= 3 ? colors.brand : colors.accent;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -244,7 +236,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress,
-              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              backgroundColor:
+                  colors.onSurfaceStrong.withValues(alpha: 0.1),
               valueColor: AlwaysStoppedAnimation(color),
               minHeight: 6,
             ),
@@ -256,6 +249,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   Widget _photoArea() {
     final photo = c.currentPhoto;
+    final white = context.colors.onSurfaceStrong;
     // Uploads are full-resolution camera originals (~4032x3024 = ~48MB
     // decoded). Decoding at display size instead keeps a whole game inside
     // the image cache rather than thrashing it or OOMing on smaller devices.
@@ -271,25 +265,25 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       ),
       clipBehavior: Clip.antiAlias,
       child: photo == null
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          ? Center(child: CircularProgressIndicator(color: white))
           : Image.network(
               '$apiBase${photo.url}',
               fit: BoxFit.cover,
               width: double.infinity,
               cacheWidth: decodeWidth,
               semanticLabel: 'Photo for round ${c.roundIndex + 1}',
-              errorBuilder: (context, error, stack) => const Center(
+              errorBuilder: (context, error, stack) => Center(
                 child: Icon(
                   Icons.broken_image,
-                  color: Colors.white54,
+                  // 54%, not the palette's 50% faint — kept exact so the
+                  // refactor stays invisible.
+                  color: white.withValues(alpha: 0.54),
                   size: 64,
                 ),
               ),
               loadingBuilder: (context, child, progress) => progress == null
                   ? child
-                  : const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
-                    ),
+                  : Center(child: CircularProgressIndicator(color: white)),
             ),
     );
   }
@@ -327,6 +321,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _guessButtons() {
     // You guess who took the photo — any player, including yourself, is a candidate.
     final candidates = c.players;
+    final white = context.colors.onSurfaceStrong;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Wrap(
@@ -357,7 +352,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 children: [
                   Icon(
                     player.avatar,
-                    color: isSelected ? Colors.white : player.color,
+                    color: isSelected ? white : player.color,
                     size: 20,
                   ),
                   const SizedBox(width: 8),
@@ -365,19 +360,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     player.name,
                     style: TextStyle(
                       color: isSelected
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.9),
+                          ? white
+                          : white.withValues(alpha: 0.9),
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   if (isSelected) ...[
                     const SizedBox(width: 6),
-                    const Icon(
-                      Icons.check_circle,
-                      color: Colors.white,
-                      size: 16,
-                    ),
+                    Icon(Icons.check_circle, color: white, size: 16),
                   ],
                 ],
               ),

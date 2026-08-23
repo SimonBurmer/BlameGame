@@ -1,10 +1,10 @@
 ---
 id: TASK-6
 title: Late-join and mid-round state reconstruction from room snapshot
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-23 10:15'
+updated_date: '2026-08-23 10:22'
 labels:
   - frontend
   - backend

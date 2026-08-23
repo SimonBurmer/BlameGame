@@ -35,7 +35,7 @@ from app.game import (
     start_game,
     submit_guess,
 )
-from app.models import Photo, Player, Room, RoomState
+from app.models import Player, Room, RoomState
 from app.store import RoomNotFound, store
 from app.timer import RoundDriver
 
@@ -180,10 +180,6 @@ def _player_dict(p: Player, room: Room | None = None) -> dict:
         # a decorative tick that always reads "ready".
         d["photo_count"] = sum(1 for photo in room.photos if photo.owner_id == p.id)
     return d
-
-
-def _photo_dict(photo: Photo) -> dict:
-    return {"id": photo.id, "owner_id": photo.owner_id, "url": photo.url}
 
 
 def _room_dict(room: Room, player_id: str | None = None) -> dict:

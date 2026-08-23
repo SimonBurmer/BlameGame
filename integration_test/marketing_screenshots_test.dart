@@ -40,20 +40,32 @@ Future<Map<String, dynamic>> _post(String path, [Map<String, dynamic>? body]) as
   return jsonDecode(res.body) as Map<String, dynamic>;
 }
 
-Future<void> _uploadPhoto(String code, String playerId, String base64Png, String name) async {
+Future<void> _uploadPhoto(String code, String playerId, String base64Jpeg, String name) async {
   // owner_id is a query parameter, not a form field.
   final uri = Uri.parse('$apiBase/rooms/$code/photos')
       .replace(queryParameters: {'owner_id': playerId});
   final req = http.MultipartRequest('POST', uri)
     ..files.add(http.MultipartFile.fromBytes(
       'file',
-      base64Decode(base64Png),
-      filename: '$name.png',
-      contentType: MediaType('image', 'png'),
+      base64Decode(base64Jpeg),
+      filename: '$name.jpg',
+      contentType: MediaType('image', 'jpeg'),
     ));
   final res = await req.send();
   if (res.statusCode >= 300) {
     throw StateError('upload -> ${res.statusCode} ${await res.stream.bytesToString()}');
+  }
+}
+
+/// Deals the demo roll out so no two players hold the same photograph. They
+/// used to overlap, and two rounds in a row then showed the same picture, which
+/// looks like a bug in the screenshots even though it is not one.
+Future<void> _dealPhotos(String code, List<String> players) async {
+  final each = demoPhotosBase64.length ~/ players.length;
+  for (var i = 0; i < players.length; i++) {
+    for (var n = 0; n < each; n++) {
+      await _uploadPhoto(code, players[i], demoPhotosBase64[i * each + n], 'p$i$n');
+    }
   }
 }
 
@@ -104,11 +116,7 @@ void main() {
       others.add(p['player_id'] as String);
     }
 
-    for (var i = 0; i < others.length; i++) {
-      await _uploadPhoto(code, others[i], demoPhotosBase64[i % demoPhotosBase64.length], 'a$i');
-      await _uploadPhoto(
-          code, others[i], demoPhotosBase64[(i + 3) % demoPhotosBase64.length], 'b$i');
-    }
+    await _dealPhotos(code, others);
 
     // --- home screen ----------------------------------------------------
     app.main();
@@ -145,11 +153,7 @@ void main() {
       final p = await _post('/rooms/$code/join', {'name': name});
       bots.add(p['player_id'] as String);
     }
-    for (var i = 0; i < bots.length; i++) {
-      await _uploadPhoto(code, bots[i], demoPhotosBase64[i % demoPhotosBase64.length], 'a$i');
-      await _uploadPhoto(
-          code, bots[i], demoPhotosBase64[(i + 3) % demoPhotosBase64.length], 'b$i');
-    }
+    await _dealPhotos(code, bots);
 
     // Join as a real client, then mount the game flow directly. The screen and
     // the data are the real thing on a real device; only the route it was

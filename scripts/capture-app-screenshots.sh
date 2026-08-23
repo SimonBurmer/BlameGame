@@ -38,6 +38,14 @@ print(next((x['udid'] for v in d.values() for x in v if x['state']=='Booted'), '
 [ -n "$UDID" ] || { echo "no booted simulator" >&2; exit 1; }
 echo "simulator: $UDID"
 
+# Put the demo roll in the simulator's Photos library, so the in-app picker has
+# real photographs in it and not an empty grid. Harmless to repeat: adding the
+# same file twice just makes a second copy, which nobody sees in a screenshot.
+if [ -z "${SKIP_ADDMEDIA:-}" ] && compgen -G "assets/demo-photos/*.jpg" >/dev/null; then
+  xcrun simctl addmedia "$UDID" assets/demo-photos/*.jpg 2>/dev/null \
+    && echo "photos: loaded into the camera roll"
+fi
+
 # --- drive, shooting on each marker ---------------------------------------
 echo "driving…"
 set +e

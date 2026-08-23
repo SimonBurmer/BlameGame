@@ -70,23 +70,33 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # `build` runs tsc first, so a missing translation key or a broken type
-      # fails here rather than shipping a blank section.
+      - run: npm run lint --workspace @blame-game/website
+      # `next build` runs tsc first, so a missing translation key or a broken
+      # type fails here rather than shipping a blank section.
       - run: npm run build --workspace @blame-game/website
       # The whole point of the site is that these exist in the HTML, so assert
-      # it rather than trusting that the generator still does its job.
-      - name: Check the SEO tags survived the build
+      # it rather than trusting that the generator still does its job. The page
+      # is prerendered, so all of it is in the file before any script runs.
+      - name: Check the built HTML
         run: |
           set -euo pipefail
-          for f in apps/website/dist/index.html apps/website/dist/de/index.html; do
+          for f in apps/website/out/index.html apps/website/out/de/index.html; do
             for needle in '<link rel="canonical"' 'hreflang="x-default"' \
-                          'property="og:image"' 'application/ld+json'; do
+                          'property="og:image"' 'application/ld+json' \
+                          'SoftwareApplication' 'FAQPage' \
+                          '/screenshots/round.jpg' '/photos/'; do
               grep -q "$needle" "$f" || { echo "missing $needle in $f" >&2; exit 1; }
             done
           done
-          test -s apps/website/dist/sitemap.xml
-          test -s apps/website/dist/robots.txt
-          echo "both locales carry canonical, hreflang, og:image and JSON-LD"
+          grep -q '<html lang="en"' apps/website/out/index.html
+          grep -q '<html lang="de"' apps/website/out/de/index.html
+          test -s apps/website/out/sitemap.xml
+          test -s apps/website/out/robots.txt
+          # Every screenshot the copy names has to actually be there.
+          for s in home lobby round guessed reveal results; do
+            test -s "apps/website/out/screenshots/$s.jpg"
+          done
+          echo "both locales carry canonical, hreflang, og:image, JSON-LD and the real screenshots"
 
 # Deployment is not run from here. Railway's own GitHub integration watches
 # main and redeploys only when /backend/** changes, which is the filtering we

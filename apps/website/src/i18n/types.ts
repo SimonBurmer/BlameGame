@@ -18,6 +18,9 @@ export function pathFor(locale: Locale): string {
 export interface Step {
   readonly title: string;
   readonly body: string;
+  /** Screenshot shown beside the step. */
+  readonly shot: 'home' | 'lobby' | 'round' | 'guessed' | 'reveal' | 'results';
+  readonly shotAlt: string;
 }
 
 export interface Feature {
@@ -27,7 +30,7 @@ export interface Feature {
 
 export interface Shot {
   /** Basename in public/screenshots, without extension. */
-  readonly file: 'lobby' | 'round' | 'guessed' | 'reveal' | 'results';
+  readonly file: 'home' | 'lobby' | 'round' | 'guessed' | 'reveal' | 'results';
   readonly caption: string;
   readonly alt: string;
 }
@@ -71,15 +74,36 @@ export interface Messages {
     readonly primaryCta: string;
     readonly primaryCtaEyebrow: string;
     readonly secondaryCta: string;
+    /**
+     * The verdict line under the headline, with the suspects' names cycling
+     * through the gap. Split into two halves because the name sits in a
+     * different place in each language: English puts a possessive on the end
+     * of it, German puts a preposition in front.
+     */
+    readonly verdictBefore: string;
+    readonly verdictAfter: string;
+    readonly suspects: readonly string[];
+    readonly scrollCue: string;
   };
-  readonly stats: readonly [Stat, Stat, Stat];
-  readonly shots: {
+  /** The scroll-driven phone, between the hero and the explanation. */
+  readonly moment: {
     readonly heading: string;
     readonly sub: string;
+    readonly caption: string;
+  };
+  readonly stats: readonly [Stat, Stat, Stat];
+  /**
+   * Alt text and captions for the screenshots, keyed by file. The screens are
+   * shown inside the sections that explain them rather than in a gallery of
+   * their own, but their descriptions still have to be translated.
+   */
+  readonly shots: {
     readonly items: readonly Shot[];
   };
   readonly steps: {
     readonly heading: string;
+    readonly sub: string;
+    /** Step labels shown on the timeline's rail, e.g. "01". */
     readonly items: readonly [Step, Step, Step];
   };
   readonly features: {

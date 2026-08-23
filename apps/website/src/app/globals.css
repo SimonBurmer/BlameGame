@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* The page is dark, always — it is a dark room with a photo on the wall, not a
+   theme the reader chose. Tailwind v4's `dark:` variant follows the operating
+   system by default, which would leave the vendored Aceternity components
+   (every one of which styles itself through `dark:`) rendering light on a
+   light-mode machine. Binding the variant to a class, and putting that class on
+   <html>, makes their intended styling the only styling. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Brand tokens.
+
+   The palette is @blame-game/brand, which is itself a transcription of
+   AppColors.dark in the Flutter app. It is repeated here because Tailwind v4
+   reads its theme from CSS, not from TypeScript; packages/brand stays the
+   source anything computed reads from.
+
+   The site runs darker than the app on purpose. The app is held at arm's
+   length in a lit room; the page is a dark room with a photo thrown on the
+   wall, and the screenshots have to be the brightest thing on it.
+--------------------------------------------------------------------------- */
+@theme {
+  --color-ink: #06060d;
+  --color-ink-2: #0d0e1c;
+  --color-navy: #16213e;
+  --color-deep: #0f3460;
+  --color-brand: #e94560;
+  --color-brand-dim: #b32f45;
+  --color-accent: #4ecdc4;
+  --color-gold: #ffd700;
+  --color-slate: #8e97b8;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display), var(--font-inter), ui-sans-serif, sans-serif;
+  --font-mono: var(--font-mono-code), ui-monospace, SFMono-Regular, monospace;
+
+  --animate-drift: drift 26s ease-in-out infinite;
+  --animate-flare: flare 7s ease-in-out infinite;
+
+  @keyframes drift {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50%      { transform: translate3d(2%, -3%, 0) scale(1.06); }
+  }
+  @keyframes flare {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 0.75; }
+  }
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: var(--color-ink);
+  /* The section jumps land under the floating navbar without this. */
+  scroll-padding-top: 7rem;
+}
+
+body {
+  background-color: var(--color-ink);
+  color: #fff;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-brand);
+  color: #fff;
+}
+
+/* The display face is set very tight and very large; at that size the default
+   tracking reads as gaps between letters rather than as words. */
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+  text-wrap: balance;
+}
+
+/* Film grain. One tiny inline SVG, fixed to the viewport, sitting over
+   everything and catching no clicks. It is what stops the large flat dark
+   areas from banding on an 8-bit display, and it is most of why the page reads
+   as a projection rather than as a dark theme. */
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: -50%;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Vignette, applied to full-bleed picture sections so the eye lands in the
+   middle of the frame instead of on the corners. */
+.vignette::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 35%, rgb(6 6 13 / 0.75) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  /* Aceternity's components animate through Motion, which reads this itself;
+     the CSS-driven ones are stopped here. */
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

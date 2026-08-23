@@ -8,11 +8,11 @@ SRC=${1:-build/app-screenshots}
 OUT=apps/website/public/screenshots
 mkdir -p "$OUT"
 
-# Displayed at ~270 CSS px wide; 540 keeps them crisp on a 2x display without
-# shipping a 1206px original for every one.
-for name in lobby round guessed reveal results; do
+# The site shows a phone as large as ~420 CSS px wide, so 840 keeps it crisp on
+# a 2x display without shipping the 1206px original for every one.
+for name in home lobby round guessed reveal results; do
   [ -f "$SRC/$name.png" ] || { echo "missing $SRC/$name.png" >&2; exit 1; }
-  sips -s format jpeg -s formatOptions 78 -Z 540 "$SRC/$name.png" \
+  sips -s format jpeg -s formatOptions 80 -Z 840 "$SRC/$name.png" \
        --out "$OUT/$name.jpg" >/dev/null
 done
 

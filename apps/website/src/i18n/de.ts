@@ -32,6 +32,15 @@ export const de: Messages = {
     primaryCta: 'App Store',
     primaryCtaEyebrow: 'Laden im',
     secondaryCta: 'So läuft es ab',
+    verdictBefore: 'Das Foto war von',
+    verdictAfter: '.',
+    suspects: ['Mara', 'Jonas', 'Ada', 'Leo', 'dir'],
+    scrollCue: 'Scrollen',
+  },
+  moment: {
+    heading: 'Zehn Sekunden. Ein Foto. Und alle schauen sich gegenseitig an.',
+    sub: 'Ein Bild, an das seit zwei Jahren niemand mehr gedacht hat, erscheint gleichzeitig auf fünf Bildschirmen, und die Uhr läuft. Jemand hier im Raum hat es aufgenommen. Punkte gibt es dafür, das als Erste:r herauszufinden.',
+    caption: 'Eine Runde, drei Handys.',
   },
   stats: [
     { value: 12, suffix: '', label: 'Leute pro Raum' },
@@ -39,8 +48,6 @@ export const de: Messages = {
     { value: 5, suffix: '', label: 'Zeichen im Code' },
   ],
   shots: {
-    heading: 'So sieht es aus',
-    sub: 'Direkt vom Handy, mitten im Spiel.',
     items: [
       { file: 'lobby', caption: 'Code vorlesen und zuschauen, wer reinkommt', alt: 'Die Lobby mit Spielcode und fünf beigetretenen Personen' },
       { file: 'round', caption: 'Ein Foto, eine Uhr, fünf Verdächtige', alt: 'Eine laufende Runde mit Foto und den anderen Mitspielenden zur Auswahl' },
@@ -51,18 +58,25 @@ export const de: Messages = {
   },
   steps: {
     heading: 'Es passieren drei Dinge',
+    sub: 'Von Anfang bis Ende dauert eine Partie ungefähr zehn Minuten. Es gibt nichts einzurichten und nichts zu lernen.',
     items: [
       {
         title: 'Jemand eröffnet einen Raum',
         body: 'Eine Person erstellt das Spiel und liest einen fünfstelligen Code vor. Kein Konto, keine Anmeldung — alle anderen tippen einen Namen ein und sind dabei.',
+        shot: 'home',
+        shotAlt: 'Der Startbildschirm mit Namensfeld, Erstellen-Button und Hardcore-Schalter',
       },
       {
         title: 'Alle steuern Fotos bei',
         body: 'Die App wählt zufällig Fotos aus deiner Galerie. Du siehst die Auswahl und kannst neu mischen, bevor irgendetwas hochgeladen wird — bis zu zehn pro Person, und das Spiel startet erst, wenn mindestens zwei Leute etwas beigesteuert haben.',
+        shot: 'lobby',
+        shotAlt: 'Die Lobby mit Spielcode und fünf beigetretenen Personen',
       },
       {
         title: 'Ihr ratet, wem es gehört',
         body: 'Ein Foto erscheint, die Uhr läuft. Tippe auf die Person, der es deiner Meinung nach gehört. Die Runde endet, sobald alle geantwortet haben — danach wird aufgelöst.',
+        shot: 'reveal',
+        shotAlt: 'Die Auflösung, die zeigt, wessen Foto es war',
       },
     ],
   },

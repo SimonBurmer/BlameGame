@@ -32,6 +32,15 @@ export const en: Messages = {
     primaryCta: 'App Store',
     primaryCtaEyebrow: 'Download on the',
     secondaryCta: 'See how it works',
+    verdictBefore: 'It was',
+    verdictAfter: '’s photo.',
+    suspects: ['Mara', 'Jonas', 'Ada', 'Leo', 'yours'],
+    scrollCue: 'Scroll',
+  },
+  moment: {
+    heading: 'Ten seconds. One photo. Everybody looking at everybody.',
+    sub: 'A picture nobody has thought about in two years goes up on five screens at once, and the clock starts. Somebody in the room took it. The scoring rewards the person who works out who first.',
+    caption: 'One round, three phones.',
   },
   stats: [
     { value: 12, suffix: '', label: 'players in a room' },
@@ -39,8 +48,6 @@ export const en: Messages = {
     { value: 5, suffix: '', label: 'characters in a code' },
   ],
   shots: {
-    heading: 'What it looks like',
-    sub: 'Straight off a phone, mid-game.',
     items: [
       { file: 'lobby', caption: 'Read out the code, watch everyone land', alt: 'The lobby, showing a game code and five players who have joined' },
       { file: 'round', caption: 'One photo, one clock, five suspects', alt: 'A round in progress with a photo and the other players to choose from' },
@@ -51,18 +58,25 @@ export const en: Messages = {
   },
   steps: {
     heading: 'Three things happen',
+    sub: 'Start to finish, a game is about ten minutes. There is nothing to set up and nothing to learn.',
     items: [
       {
         title: 'Someone starts a room',
         body: 'One player creates the game and reads out a five-character code. No accounts and no sign-up — everybody else types a name and joins.',
+        shot: 'home',
+        shotAlt: 'The start screen, with a name field, a create button and a Hardcore mode switch',
       },
       {
         title: 'Everyone adds photos',
         body: 'The app picks photos at random from your camera roll. You see what it chose and can reshuffle before anything is uploaded — up to ten each, and the game will not start until at least two people have contributed.',
+        shot: 'lobby',
+        shotAlt: 'The lobby, showing a game code and five players who have joined',
       },
       {
         title: 'You guess whose it is',
         body: 'A photo appears and the clock starts. Tap the person you think it belongs to. The round ends the moment everybody has answered, and then it tells you who was right.',
+        shot: 'reveal',
+        shotAlt: 'The reveal, naming whose photo it was',
       },
     ],
   },

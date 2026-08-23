@@ -1,11 +1,11 @@
-// Tiny static server for previewing apps/website/dist locally.
+// Tiny static server for previewing apps/website/out locally.
 // Node's http module only — the site is static files, nothing more is needed.
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 
-const root = resolve(process.argv[2] ?? 'apps/website/dist');
+const root = resolve(process.argv[2] ?? 'apps/website/out');
 const port = Number(process.env.PORT ?? 4173);
 
 const TYPES = {
@@ -16,6 +16,11 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.xml': 'application/xml; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.json': 'application/json; charset=utf-8',
 };
 
 async function resolveFile(urlPath) {

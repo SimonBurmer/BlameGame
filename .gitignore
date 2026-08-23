@@ -49,5 +49,5 @@ app.*.map.json
 
 # JS monorepo (apps/website, packages/*)
 node_modules/
-apps/website/dist/
-apps/website/.ssr/
+apps/website/.next/
+apps/website/out/

@@ -64,14 +64,18 @@ class GamePlayer {
 /// A photo reference from the backend (URL is relative to [apiBase]).
 class PhotoInfo {
   final String id;
-  final String ownerId;
+  /// Null while the round is still live: the owner *is* the answer, so the
+  /// room snapshot withholds it until the round is revealed. Nothing in the UI
+  /// reads it — the reveal comes from `round_revealed` — so this stays absent
+  /// rather than being faked with a placeholder id.
+  final String? ownerId;
   final String url;
 
-  const PhotoInfo({required this.id, required this.ownerId, required this.url});
+  const PhotoInfo({required this.id, this.ownerId, required this.url});
 
   factory PhotoInfo.fromJson(Map<String, dynamic> json) => PhotoInfo(
         id: json['id'] as String,
-        ownerId: json['owner_id'] as String,
+        ownerId: json['owner_id'] as String?,
         url: json['url'] as String,
       );
 

@@ -344,11 +344,7 @@ class GameController extends ChangeNotifier {
     connectionError = null;
     _connectSocket();
     try {
-      final snapshot = await api.getRoom(session.roomCode);
-      _mergeRoster(snapshot.players);
-      roundSeconds = snapshot.roundSeconds;
-      totalRounds = snapshot.totalRounds;
-      hardcore = snapshot.hardcore;
+      _applySnapshot(await api.getRoom(session.roomCode, playerId: myPlayerId));
     } catch (_) {
       // The room is unreachable, so the new socket is no better than the old.
       await _teardownSocket();
@@ -356,6 +352,11 @@ class GameController extends ChangeNotifier {
       notifyListeners();
       rethrow;
     }
+    // The fetch succeeded, so the connection is good even if the fresh
+    // socket's stream still had a stale onDone/onError queued up from the
+    // subscription this replaced — that signal describes the old connection,
+    // not this one.
+    connectionError = null;
     _retriesUsed = 0;
     notifyListeners();
   }

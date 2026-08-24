@@ -49,6 +49,14 @@ Future<TestHarness> harness({
   final controller = GameController(
     api: ApiClient(httpClient: http.client, baseUrl: 'http://test'),
     socketFactory: fakeSocketFactory(socket),
+    // No heartbeat in widget tests: they assert on screens, not on the
+    // connection, and the test framework fails any test that ends with a timer
+    // still pending. `game_controller_test.dart` covers the heartbeat itself.
+    heartbeatInterval: Duration.zero,
+    // No automatic retry either: these tests assert that a drop surfaces a
+    // banner with a manual RETRY, which is exactly the state the automatic
+    // retries would clear out from under them.
+    retryBackoff: const [],
   );
   await controller.joinByCode('ABC12', 'Emma');
   return TestHarness(controller, socket, http);

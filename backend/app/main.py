@@ -12,6 +12,7 @@ so run only ONE instance.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -497,7 +498,16 @@ async def game_socket(websocket: WebSocket, code: str, player_id: str) -> None:
             # We don't require inbound messages; keep the socket open so the
             # client can receive broadcasts. receive_text() blocks until the
             # client sends or disconnects.
-            await websocket.receive_text()
+            message = await websocket.receive_text()
+            # Answer heartbeats. A silently dropped connection delivers no
+            # close frame on mobile, so the client can only tell the socket is
+            # dead by noticing this reply never arrives. Anything else inbound
+            # is ignored -- a garbage frame must not kill a player's feed.
+            try:
+                if json.loads(message).get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except (ValueError, AttributeError):
+                pass
     except WebSocketDisconnect:
         pass
     finally:

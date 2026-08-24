@@ -38,8 +38,28 @@ class GameController extends ChangeNotifier {
   final ApiClient api;
   final GameSocketFactory _socketFactory;
 
-  GameController({ApiClient? api, GameSocketFactory? socketFactory})
-      : api = api ?? ApiClient(),
+  /// How often to ping, and how long to wait for any frame back before calling
+  /// the socket dead. Injectable so tests don't wait real seconds;
+  /// [Duration.zero] turns the heartbeat off, which is what widget tests want —
+  /// the test framework fails any test that ends with a timer pending.
+  final Duration heartbeatInterval;
+
+  /// Backoff before each automatic retry. Bounded on purpose: once these are
+  /// spent the banner comes back and RETRY is the player's fallback. An
+  /// endless silent retry loop is worse than a visible failure.
+  final List<Duration> retryBackoff;
+
+  GameController({
+    ApiClient? api,
+    GameSocketFactory? socketFactory,
+    this.heartbeatInterval = const Duration(seconds: 15),
+    this.retryBackoff = const [
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 5),
+      Duration(seconds: 10),
+    ],
+  })  : api = api ?? ApiClient(),
         _socketFactory = socketFactory ?? GameSocket.connect;
 
   GameSession? _session;
@@ -101,6 +121,24 @@ class GameController extends ChangeNotifier {
 
   GameSocket? _socket;
   StreamSubscription<GameEvent>? _sub;
+
+  /// Pings on [heartbeatInterval]; the tick that finds no frame since the last
+  /// one declares the socket dead.
+  Timer? _heartbeat;
+
+  /// Pending automatic retry, if any. Held so [dispose] can cancel it — a
+  /// reconnect firing on a torn-down controller is the TASK-46 crash again.
+  Timer? _retryTimer;
+
+  /// Whether any frame (event or pong) arrived since the last heartbeat tick.
+  bool _sawFrame = false;
+
+  /// How many automatic retries have been spent on the current outage.
+  int _retriesUsed = 0;
+
+  /// True while an automatic retry is pending, so the UI can say "reconnecting"
+  /// rather than offering a RETRY that is already happening.
+  bool get isReconnecting => _retryTimer != null;
 
   GamePlayer? get me => _playerById(myPlayerId);
 
@@ -217,6 +255,12 @@ class GameController extends ChangeNotifier {
   }
 
   Future<void> _teardownSocket() async {
+    // Also drops any pending retry: leaving or being kicked must not have a
+    // timer reconnect us to a room we are no longer in.
+    _heartbeat?.cancel();
+    _retryTimer?.cancel();
+    _heartbeat = null;
+    _retryTimer = null;
     await _sub?.cancel();
     await _socket?.close();
     _sub = null;
@@ -227,15 +271,63 @@ class GameController extends ChangeNotifier {
     final s = session;
     _socket = _socketFactory(s.roomCode, s.playerId);
     _sub = _socket!.events.listen(
-      _onEvent,
+      (event) {
+        _sawFrame = true;
+        _onEvent(event);
+      },
       onError: (Object e) => _setConnectionError('Connection error: $e'),
       onDone: () => _setConnectionError('Lost connection to the game'),
     );
+    _sawFrame = true;
+    if (heartbeatInterval > Duration.zero) {
+      _heartbeat = Timer.periodic(heartbeatInterval, (_) => _beat());
+    }
+  }
+
+  /// One heartbeat tick: a silent interval means the socket is dead.
+  ///
+  /// A mobile connection that vanishes often delivers neither onDone nor
+  /// onError, so "nothing came back since the last ping" is the only signal
+  /// there is. The `pong` decodes to an [UnknownEvent] and is discarded — it
+  /// only has to arrive, not to mean anything.
+  void _beat() {
+    if (!_sawFrame) {
+      _setConnectionError('Lost connection to the game');
+      return;
+    }
+    _sawFrame = false;
+    _socket?.ping();
   }
 
   void _setConnectionError(String message) {
+    // The heartbeat and onDone can both fire for one outage; the first wins
+    // and the retry chain must not be restarted underneath itself.
+    if (connectionError != null) return;
     connectionError = message;
+    _heartbeat?.cancel();
+    _heartbeat = null;
+    _scheduleRetry();
     notifyListeners();
+  }
+
+  /// Queues the next automatic retry, if any are left.
+  ///
+  /// Bounded on purpose: when the backoff list is spent the banner stays up and
+  /// the player's manual RETRY is the fallback. An endless silent retry loop is
+  /// worse than a visible failure.
+  void _scheduleRetry() {
+    if (_retriesUsed >= retryBackoff.length) return;
+    final delay = retryBackoff[_retriesUsed++];
+    _retryTimer = Timer(delay, () async {
+      _retryTimer = null;
+      try {
+        await reconnect();
+      } catch (_) {
+        // Still down. `reconnect` left the error set, so queue the next one.
+        _scheduleRetry();
+        notifyListeners();
+      }
+    });
   }
 
   /// Re-open the socket and re-sync from the server.
@@ -244,12 +336,28 @@ class GameController extends ChangeNotifier {
   /// while we were disconnected are gone, so replaying server state is the
   /// only way back into sync.
   Future<void> reconnect() async {
+    _retryTimer?.cancel();
+    _retryTimer = null;
     await _teardownSocket();
-    _connectSocket();
-    _applySnapshot(
-      await api.getRoom(session.roomCode, playerId: session.playerId),
-    );
+    // Clear before reconnecting so a socket that drops again immediately can
+    // set a fresh error rather than being swallowed as a duplicate.
     connectionError = null;
+    _connectSocket();
+    try {
+      _applySnapshot(await api.getRoom(session.roomCode, playerId: myPlayerId));
+    } catch (_) {
+      // The room is unreachable, so the new socket is no better than the old.
+      await _teardownSocket();
+      connectionError = 'Lost connection to the game';
+      notifyListeners();
+      rethrow;
+    }
+    // The fetch succeeded, so the connection is good even if the fresh
+    // socket's stream still had a stale onDone/onError queued up from the
+    // subscription this replaced — that signal describes the old connection,
+    // not this one.
+    connectionError = null;
+    _retriesUsed = 0;
     notifyListeners();
   }
 
@@ -469,6 +577,13 @@ class GameController extends ChangeNotifier {
   void dispose() {
     _disposeRequested = true;
     if (hasListeners) return;
+    // Every timer dies here. A surviving heartbeat leaks one timer per game,
+    // and a surviving retry would call reconnect() on a disposed controller --
+    // exactly the "used after being disposed" crash TASK-46 fixed.
+    _heartbeat?.cancel();
+    _retryTimer?.cancel();
+    _heartbeat = null;
+    _retryTimer = null;
     // Cancel before closing: a cancelled subscription never delivers onDone,
     // so normal teardown can't trip the connection-lost banner.
     _sub?.cancel();

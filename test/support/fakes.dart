@@ -27,6 +27,12 @@ class FakeGameSocket implements GameSocket {
 
   void emitError(Object error) => _controller.addError(error);
 
+  /// How many heartbeats the controller has sent.
+  int pings = 0;
+
+  @override
+  void ping() => pings++;
+
   @override
   Stream<GameEvent> get events => _controller.stream;
 
@@ -44,6 +50,24 @@ GameSocketFactory fakeSocketFactory(FakeGameSocket socket) {
     socket.playerId = playerId;
     return socket;
   };
+}
+
+/// A factory that hands out a fresh socket per connect, recording each one.
+///
+/// Reconnection tests need this: a single reused fake stays closed after the
+/// first drop, so the "reconnected" socket would be dead on arrival.
+class ReconnectingSocketFactory {
+  final List<FakeGameSocket> sockets = [];
+
+  FakeGameSocket get latest => sockets.last;
+
+  GameSocketFactory get factory => (String code, String playerId) {
+        final socket = FakeGameSocket()
+          ..code = code
+          ..playerId = playerId;
+        sockets.add(socket);
+        return socket;
+      };
 }
 
 /// A player with sensible defaults, so tests only state what they care about.

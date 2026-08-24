@@ -1,10 +1,10 @@
 ---
 id: TASK-37
 title: Extract the app theme and shared widgets
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-22 01:21'
-updated_date: '2026-08-23 16:56'
+updated_date: '2026-08-24 11:16'
 labels:
   - refactor
   - flutter

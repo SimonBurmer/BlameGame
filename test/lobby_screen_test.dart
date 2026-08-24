@@ -199,4 +199,61 @@ void main() {
     expect(find.text('Jake'), findsNothing);
     expect(find.byType(LobbyScreen), findsOneWidget);
   });
+
+  testWidgets('the host sets rounds and round length from the lobby',
+      (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    expect(find.text('Rounds'), findsOneWidget);
+    expect(find.text('Seconds per round'), findsOneWidget);
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.add_circle_outline).first);
+    await tester.pump();
+
+    final posted = h.http.requests.where((r) => r.url.path.endsWith('/settings'));
+    expect(posted, isNotEmpty);
+    expect((posted.last as dynamic).body, contains('total_rounds'));
+  });
+
+  testWidgets('a broadcast settings change reaches every client',
+      (tester) async {
+    final h = await harness(isHost: false);
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    await h.emit(
+      tester,
+      const SettingsUpdated(totalRounds: 9, roundSeconds: 25, hardcore: true),
+    );
+
+    // Read-only for a non-host: values shown, no steppers or switch.
+    expect(find.text('9'), findsOneWidget);
+    expect(find.text('25'), findsOneWidget);
+    expect(find.text('ON'), findsOneWidget);
+    expect(find.byIcon(Icons.add_circle_outline), findsNothing);
+    expect(find.byType(SwitchListTile), findsNothing);
+  });
+
+  testWidgets('hardcore is editable until the first photo lands, then locks',
+      (tester) async {
+    final h = await harness();
+    await pumpScreen(tester, LobbyScreen(controller: h.controller));
+
+    final switchFinder = find.byType(Switch);
+    expect(tester.widget<Switch>(switchFinder).onChanged, isNotNull);
+
+    await h.emit(
+      tester,
+      PhotosUpdated([
+        player(id: 'me', name: 'Emma', isHost: true, photoCount: 1),
+        player(id: 'p2', name: 'Jake'),
+      ]),
+    );
+
+    expect(tester.widget<Switch>(find.byType(Switch)).onChanged, isNull);
+    expect(
+      find.text('Locked — photos have already been added to this room.'),
+      findsOneWidget,
+    );
+  });
 }

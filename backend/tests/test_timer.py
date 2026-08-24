@@ -77,7 +77,24 @@ async def test_round_started_event_carries_photo_and_index():
     await driver.run()
     assert starts[0]["round_index"] == 0
     assert "photo" in starts[0]
-    assert starts[0]["photo"]["owner_id"]
+    assert starts[0]["photo"]["url"]
+
+
+@pytest.mark.anyio
+async def test_round_started_withholds_the_photo_owner():
+    # round_started is broadcast to every client before anyone guesses, so
+    # shipping the owner there hands out the answer to the live round.
+    room = make_started_room(total_rounds=1)
+    events = []
+    driver = RoundDriver(room, sleep=_noop_sleep, on_event=events.append)
+    await driver.run()
+
+    started = next(e for e in events if e["type"] == "round_started")
+    assert "owner_id" not in started["photo"]
+    assert "owner_id" not in str(started)
+    # ...and the reveal still discloses it, since it drives the reveal UI.
+    revealed = next(e for e in events if e["type"] == "round_revealed")
+    assert revealed["owner_id"] == room.rounds[0].photo.owner_id
 
 
 @pytest.mark.anyio

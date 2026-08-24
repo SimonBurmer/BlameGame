@@ -104,6 +104,111 @@ def test_hardcore_mode_is_not_mutable_after_creation(client):
     assert client.get(f"/rooms/{code}").json()["hardcore"] is False
 
 
+def test_host_sets_settings_from_the_lobby(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    resp = client.post(
+        f"/rooms/{code}/settings",
+        json={"host_id": host, "total_rounds": 8, "round_seconds": 20, "hardcore": True},
+    )
+    assert resp.status_code == 200
+    snapshot = client.get(f"/rooms/{code}").json()
+    assert snapshot["total_rounds"] == 8
+    assert snapshot["round_seconds"] == 20
+    assert snapshot["hardcore"] is True
+
+
+def test_start_uses_the_lobby_settings(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    client.post(
+        f"/rooms/{code}/settings",
+        json={"host_id": host, "total_rounds": 3, "round_seconds": 25},
+    )
+    _upload_photo(client, code, host)
+    _upload_photo(client, code, jake)
+    body = client.post(f"/rooms/{code}/start", json={"host_id": host}).json()
+    assert body["total_rounds"] == 3
+    assert body["round_seconds"] == 25
+
+
+def test_only_the_host_can_change_settings(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    resp = client.post(
+        f"/rooms/{code}/settings", json={"host_id": jake, "total_rounds": 9}
+    )
+    assert resp.status_code == 403
+    assert client.get(f"/rooms/{code}").json()["total_rounds"] == 5
+
+
+def test_hardcore_locks_server_side_once_a_photo_is_uploaded(client):
+    # The adversarial case: a client can post whatever it likes, so the lock
+    # lives on the server. Flipping the mode after someone has already
+    # preview-approved and shared a photo must be refused.
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    _upload_photo(client, code, host)
+
+    resp = client.post(f"/rooms/{code}/settings", json={"host_id": host, "hardcore": True})
+    assert resp.status_code == 400
+    assert "locked" in resp.json()["detail"]
+    assert client.get(f"/rooms/{code}").json()["hardcore"] is False
+
+
+def test_rounds_stay_editable_after_photos_are_uploaded(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    _upload_photo(client, code, host)
+    resp = client.post(
+        f"/rooms/{code}/settings",
+        json={"host_id": host, "total_rounds": 7, "round_seconds": 15},
+    )
+    assert resp.status_code == 200
+    snapshot = client.get(f"/rooms/{code}").json()
+    assert (snapshot["total_rounds"], snapshot["round_seconds"]) == (7, 15)
+
+
+def test_restating_the_current_hardcore_value_is_allowed_after_photos(client):
+    # Only a *change* is locked; a client resending the unchanged value (a
+    # full-settings post) must not be rejected.
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    _upload_photo(client, code, host)
+    resp = client.post(
+        f"/rooms/{code}/settings", json={"host_id": host, "hardcore": False}
+    )
+    assert resp.status_code == 200
+
+
+def test_settings_cannot_be_changed_once_the_game_is_running(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    _upload_photo(client, code, host)
+    _upload_photo(client, code, jake)
+    client.post(f"/rooms/{code}/start", json={"host_id": host})
+    resp = client.post(
+        f"/rooms/{code}/settings", json={"host_id": host, "total_rounds": 2}
+    )
+    assert resp.status_code == 400
+
+
+def test_settings_are_broadcast_to_every_client(client):
+    code = client.post("/rooms").json()["code"]
+    host = _join(client, code, "Emma")
+    jake = _join(client, code, "Jake")
+    with client.websocket_connect(f"/ws/{code}/{jake}") as ws:
+        client.post(
+            f"/rooms/{code}/settings", json={"host_id": host, "total_rounds": 6}
+        )
+        event = ws.receive_json()
+    assert event["type"] == "settings_updated"
+    assert event["total_rounds"] == 6
+
+
 def test_join_room(client):
     code = client.post("/rooms").json()["code"]
     resp = client.post(f"/rooms/{code}/join", json={"name": "Emma"})
@@ -239,6 +344,137 @@ def test_guess_that_completes_the_round_does_not_error(client):
     assert r2.status_code == 200
 
 
+def _start_two_player_round(client, seconds=30):
+    """A room in IN_ROUND with two players who each contributed a photo."""
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    _upload_photo(client, code, jake_id)
+    _start(client, code, host_id, round_seconds=seconds)
+    return code, host_id, jake_id
+
+
+def _record_broadcasts(monkeypatch):
+    """Capture what the app broadcasts, without a socket to read from.
+
+    Asserting via a real socket means a *missing* broadcast blocks forever in
+    receive_json() instead of failing, so the negative case is checked here.
+    """
+    sent = []
+    original = manager.broadcast
+
+    async def spy(room_code, message):
+        sent.append(message)
+        await original(room_code, message)
+
+    monkeypatch.setattr(manager, "broadcast", spy)
+    return sent
+
+
+def test_guess_result_reaches_the_other_players(client, monkeypatch):
+    """The scoreboard is driven by the broadcast, not by the guesser's response.
+
+    Everyone else only learns a guess happened over the socket; if the guess
+    endpoint returned its result without broadcasting, the guesser would see
+    their points and every other client would show a frozen scoreboard.
+    """
+    code, host_id, jake_id = _start_two_player_round(client)
+    sent = _record_broadcasts(monkeypatch)
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as host_ws:
+        owner = _current_owner(code)
+        guesser = jake_id if owner == host_id else host_id
+        client.post(
+            f"/rooms/{code}/guess",
+            json={"guesser_id": guesser, "guessed_owner_id": owner},
+        )
+
+        results = [m for m in sent if m["type"] == "guess_result"]
+        assert len(results) == 1, "the guess was not broadcast"
+
+        # ...and it actually reaches another player's socket, not just the bus.
+        event = host_ws.receive_json()
+        assert event["type"] == "guess_result"
+        assert event["guesser_id"] == guesser
+        assert event["correct"] is True
+        assert event["points"] > 0
+
+
+def test_a_wrong_guess_scores_nothing_and_says_so(client, monkeypatch):
+    # points > 0 is what marks a guess correct, in the response and the
+    # broadcast alike, so a wrong guess must score exactly zero.
+    code, host_id, jake_id = _start_two_player_round(client)
+    sent = _record_broadcasts(monkeypatch)
+
+    owner = _current_owner(code)
+    guesser = jake_id if owner == host_id else host_id
+    wrong = host_id if owner != host_id else jake_id
+
+    resp = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": guesser, "guessed_owner_id": wrong},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"points": 0, "correct": False}
+
+    results = [m for m in sent if m["type"] == "guess_result"]
+    assert len(results) == 1
+    assert results[0]["correct"] is False
+    assert results[0]["points"] == 0
+
+
+def test_guessing_twice_in_a_round_is_rejected(client):
+    # One guess per player per round; a second must not top up the score.
+    code, host_id, jake_id = _start_two_player_round(client)
+    owner = _current_owner(code)
+    guesser = jake_id if owner == host_id else host_id
+
+    first = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": guesser, "guessed_owner_id": owner},
+    )
+    assert first.status_code == 200
+    scored = client.get(f"/rooms/{code}").json()["players"]
+
+    second = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": guesser, "guessed_owner_id": owner},
+    )
+    assert second.status_code == 400
+    assert client.get(f"/rooms/{code}").json()["players"] == scored
+
+
+def test_guess_from_a_non_player_is_rejected(client):
+    # guesser_id is client-supplied: an unknown id must not mint a score entry.
+    code, host_id, _ = _start_two_player_round(client)
+    resp = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": "not-a-player", "guessed_owner_id": host_id},
+    )
+    assert resp.status_code == 400
+
+
+def test_guess_in_an_unknown_room_is_404(client):
+    resp = client.post(
+        "/rooms/ZZZZZ/guess",
+        json={"guesser_id": "a", "guessed_owner_id": "b"},
+    )
+    assert resp.status_code == 404
+
+
+def test_guess_before_the_game_starts_is_rejected(client):
+    # A lobby has no round to answer, so there is nothing to score against.
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    resp = client.post(
+        f"/rooms/{code}/guess",
+        json={"guesser_id": jake_id, "guessed_owner_id": host_id},
+    )
+    assert resp.status_code == 400
+
+
 # --- resetting -------------------------------------------------------------
 
 def test_host_can_reset_finished_room(client):
@@ -272,7 +508,9 @@ def test_host_can_reset_finished_room(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["state"] == "lobby"
-    assert body["total_rounds"] == 0
+    # Back in the lobby the snapshot reports the configured round count (the
+    # one the last game was started with), not the cleared round list.
+    assert body["total_rounds"] == 1
     # Same room code, same players, scores carried over -- no rejoin needed.
     assert body["code"] == code
     assert {p["name"] for p in body["players"]} == {"Emma", "Jake"}
@@ -626,6 +864,69 @@ def test_photo_route_does_not_serve_files_outside_the_upload_dir(client):
         assert resp.status_code == 404, f"{code}/{filename} leaked: {resp.status_code}"
 
 
+def test_fetching_a_photo_that_does_not_exist_is_404(client):
+    # A real room, a well-formed filename, no such file: a miss must 404 and
+    # not blow up on the missing path.
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    assert client.get(f"/rooms/{code}/photos/deadbeef1234.jpg").status_code == 404
+
+
+def test_photos_of_an_unknown_room_are_404(client):
+    assert client.get("/rooms/ZZZZZ/photos/deadbeef1234.jpg").status_code == 404
+
+
+def test_upload_to_an_unknown_room_is_404(client):
+    resp = _upload_photo(client, "ZZZZZ", "whoever")
+    assert resp.status_code == 404
+
+
+def test_upload_for_a_player_not_in_the_room_is_rejected(client):
+    # owner_id is client-supplied. An unknown owner must not be able to plant
+    # a photo nobody can be scored against.
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    resp = _upload_photo(client, code, "not-a-player")
+    assert resp.status_code == 400
+    assert client.get(f"/rooms/{code}").json()["players"][0]["photo_count"] == 0
+
+
+def test_upload_without_an_owner_is_rejected(client):
+    # owner_id is a required query param, not part of the multipart body.
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+    files = {"file": ("photo.jpg", io.BytesIO(b"\xff\xd8\xff_fake_jpeg"), "image/jpeg")}
+    resp = client.post(f"/rooms/{code}/photos", files=files)
+    assert resp.status_code == 422
+
+
+def test_upload_without_a_file_is_rejected(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    resp = client.post(f"/rooms/{code}/photos", params={"owner_id": host_id})
+    assert resp.status_code == 422
+
+
+def test_empty_upload_is_rejected(client):
+    # A zero-byte file is caught by its own guard before the magic-byte check,
+    # so the reason a player sees is "empty file", not "must be a JPEG or PNG".
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    resp = _upload_photo(client, code, host_id, content=b"")
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "empty file"
+
+
+def test_upload_with_a_non_image_content_type_is_rejected(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    files = {"file": ("photo.txt", io.BytesIO(b"\xff\xd8\xff_fake_jpeg"), "text/plain")}
+    resp = client.post(
+        f"/rooms/{code}/photos", params={"owner_id": host_id}, files=files
+    )
+    assert resp.status_code == 400
+
+
 # --- upload limits ---------------------------------------------------------
 
 def test_oversized_upload_is_rejected(client):
@@ -760,6 +1061,100 @@ def test_websocket_rejects_a_non_player(client):
             ws.receive_json()
 
 
+def test_websocket_for_an_unknown_room_is_refused(client):
+    with pytest.raises(Exception):
+        with client.websocket_connect("/ws/ZZZZZ/whoever") as ws:
+            ws.receive_json()
+
+
+def test_disconnecting_deregisters_the_socket(client):
+    """A client that hangs up must leave nothing behind in the registry.
+
+    Without the `finally` in the WS route the socket stays in the room list
+    forever: every later broadcast writes to it, and the room dict grows for
+    the process lifetime.
+    """
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}"):
+        assert len(manager._rooms[code]) == 1
+        assert len(manager._players[(code, host_id)]) == 1
+
+    # Closing the last socket drops both entries, not just empties them.
+    assert manager._rooms.get(code) is None
+    assert manager._players.get((code, host_id)) is None
+
+
+def test_one_client_disconnecting_leaves_the_others_connected(client):
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as host_ws:
+        with client.websocket_connect(f"/ws/{code}/{jake_id}"):
+            assert len(manager._rooms[code]) == 2
+        assert len(manager._rooms[code]) == 1
+        assert manager._players.get((code, jake_id)) is None
+
+        # The surviving socket still gets events.
+        _join(client, code, "Zoe")
+        assert host_ws.receive_json()["type"] == "player_joined"
+
+
+def test_broadcast_prunes_a_socket_that_died_without_disconnecting(client):
+    """A socket that vanished without a close frame must not be written twice.
+
+    A dropped connection (network gone, process killed) never reaches the
+    route's `finally`, so the registry only learns it is dead when a send
+    raises -- broadcast has to prune it there or every future broadcast keeps
+    raising on the same corpse.
+    """
+    import anyio
+
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    class DeadSocket:
+        sends = 0
+
+        async def send_json(self, message):
+            DeadSocket.sends += 1
+            raise RuntimeError("connection lost")
+
+    dead = DeadSocket()
+    manager._rooms.setdefault(code, []).append(dead)
+    manager._players.setdefault((code, host_id), []).append(dead)
+
+    anyio.run(manager.broadcast, code, {"type": "ping"})
+    assert DeadSocket.sends == 1
+    assert manager._rooms.get(code) is None
+    assert manager._players.get((code, host_id)) is None
+
+    # A second broadcast finds nothing to write to, rather than raising again.
+    anyio.run(manager.broadcast, code, {"type": "ping"})
+    assert DeadSocket.sends == 1
+
+
+def test_broadcast_still_reaches_live_sockets_when_one_is_dead(client):
+    # One dead peer must not cost everyone else their events -- rounds are
+    # timed, so a swallowed broadcast loses real game time.
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+
+    class DeadSocket:
+        async def send_json(self, message):
+            raise RuntimeError("connection lost")
+
+    with client.websocket_connect(f"/ws/{code}/{host_id}") as host_ws:
+        manager._rooms[code].insert(0, DeadSocket())
+        _join(client, code, "Jake")
+
+        assert host_ws.receive_json()["type"] == "player_joined"
+        # The dead one was pruned; only the live socket is left.
+        assert len(manager._rooms[code]) == 1
+
+
 # --- ending a room ---------------------------------------------------------
 
 def test_host_can_end_a_room_and_its_photos_go_with_it(client, tmp_path, monkeypatch):
@@ -828,3 +1223,94 @@ def test_upload_cleanup_refuses_a_path_outside_the_upload_dir(tmp_path, monkeypa
 
     main._delete_room_uploads("../not-ours")
     assert victim.is_dir()
+
+
+# --- mid-round state reconstruction ----------------------------------------
+
+def _started_room(client, rounds=2, seconds=30):
+    """A room mid-game, with two players who have both uploaded."""
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    jake_id = _join(client, code, "Jake")
+    _upload_photo(client, code, host_id)
+    _upload_photo(client, code, jake_id)
+    _start(client, code, host_id, total_rounds=rounds, round_seconds=seconds)
+    return code, host_id, jake_id
+
+
+def test_lobby_snapshot_carries_no_round(client):
+    code = client.post("/rooms").json()["code"]
+    _join(client, code, "Emma")
+
+    body = client.get(f"/rooms/{code}").json()
+    assert body["state"] == "lobby"
+    assert "round" not in body
+
+
+def test_snapshot_carries_the_in_flight_round(client):
+    code, host_id, _ = _started_room(client)
+    room = store.get_room(code)
+    room.rounds[room.current_round].ends_at = 1_700_000_000.5
+
+    body = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert body["state"] == "in_round"
+    rnd = body["round"]
+    assert rnd["index"] == room.current_round
+    assert rnd["photo"]["id"] == room.rounds[room.current_round].photo.id
+    # Epoch ms, so the client derives its countdown from the server's clock.
+    assert rnd["ends_at"] == 1_700_000_000_500
+    assert rnd["has_guessed"] is False
+
+
+def test_snapshot_withholds_the_owner_while_the_round_is_live(client):
+    """The owner is the answer -- leaking it would be a free correct guess."""
+    code, host_id, _ = _started_room(client)
+
+    body = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert "owner_id" not in body["round"]["photo"]
+
+
+def test_snapshot_discloses_the_owner_once_revealed(client):
+    code, host_id, _ = _started_room(client)
+    store.get_room(code).state = RoomState.REVEALING
+
+    body = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert body["state"] == "revealing"
+    assert body["round"]["photo"]["owner_id"] == _current_owner(code)
+    # Nothing to count down to once the round is over.
+    assert body["round"]["ends_at"] is None
+
+
+def test_snapshot_reports_a_guess_the_player_already_spent(client):
+    code, host_id, jake_id = _started_room(client)
+    room = store.get_room(code)
+    resp = client.post(
+        f"/rooms/{code}/guess",
+        json={
+            "guesser_id": host_id,
+            "guessed_owner_id": jake_id,
+            "round_index": room.current_round,
+        },
+    )
+    assert resp.status_code == 200
+
+    mine = client.get(f"/rooms/{code}", params={"player_id": host_id}).json()
+    assert mine["round"]["has_guessed"] is True
+    # ...and only for the player who spent it.
+    theirs = client.get(f"/rooms/{code}", params={"player_id": jake_id}).json()
+    assert theirs["round"]["has_guessed"] is False
+
+
+def test_snapshot_without_a_player_id_reports_no_guess(client):
+    code, _, _ = _started_room(client)
+    assert client.get(f"/rooms/{code}").json()["round"]["has_guessed"] is False
+
+
+def test_finished_snapshot_reports_the_finished_state(client):
+    code, _, _ = _started_room(client)
+    _finish(code)
+
+    body = client.get(f"/rooms/{code}").json()
+    assert body["state"] == "finished"
+    # The last round stays on the snapshot, answer and all.
+    assert body["round"]["photo"]["owner_id"] == _current_owner(code)

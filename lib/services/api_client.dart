@@ -7,6 +7,28 @@ import 'package:http_parser/http_parser.dart' show MediaType;
 import '../config.dart';
 import '../models/game_models.dart';
 
+/// The in-flight round carried by a room snapshot; absent in the lobby.
+///
+/// [endsAt] is a server epoch-ms deadline (null once the round is revealed),
+/// and [photo]`.ownerId` is null while the round is still live — the owner is
+/// the answer, so the server withholds it until the reveal.
+typedef RoundSnapshot = ({
+  int index,
+  PhotoInfo photo,
+  int? endsAt,
+  bool hasGuessed,
+});
+
+/// A full room snapshot: roster, settings, phase, and the in-flight round.
+typedef RoomSnapshot = ({
+  List<GamePlayer> players,
+  int totalRounds,
+  int roundSeconds,
+  bool hardcore,
+  String state,
+  RoundSnapshot? round,
+});
+
 /// Thrown when the backend returns a non-2xx response.
 class ApiException implements Exception {
   final int statusCode;
@@ -61,11 +83,10 @@ class ApiClient {
     return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
-  /// Create a new room; returns its join code. In hardcore mode photos are
-  /// uploaded blind, with no preview or reshuffle. The mode is fixed at
-  /// creation — see the note on the server's Room.hardcore.
-  Future<String> createRoom({bool hardcore = false}) async =>
-      (await _postJson('/rooms', {'hardcore': hardcore}))['code'] as String;
+  /// Create a new room; returns its join code. Game settings (rounds, round
+  /// length, hardcore mode) are set afterwards from the lobby.
+  Future<String> createRoom() async =>
+      (await _postJson('/rooms'))['code'] as String;
 
   /// Join a room by code; returns (playerId, isHost).
   Future<({String playerId, bool isHost})> joinRoom(
@@ -115,22 +136,53 @@ class ApiClient {
     return _decode(resp)['url'] as String;
   }
 
-  /// Fetch the current room snapshot (players, round length, photo mode).
-  Future<({List<GamePlayer> players, int roundSeconds, bool hardcore})> getRoom(
-    String code,
-  ) async {
-    final resp = await _http.get(_uri('/rooms/$code')).timeout(_timeout);
+  /// Fetch the current room snapshot (players, settings, photo mode, and the
+  /// in-flight round when the game has started).
+  ///
+  /// [playerId] scopes the caller's own view of the round — currently whether
+  /// they already guessed it — so a reconnecting player isn't offered a guess
+  /// they've spent.
+  Future<RoomSnapshot> getRoom(
+    String code, {
+    String? playerId,
+  }) async {
+    final resp = await _http
+        .get(_uri('/rooms/$code', playerId == null ? null : {'player_id': playerId}))
+        .timeout(_timeout);
     final body = _decode(resp);
     final players = (body['players'] as List<dynamic>)
         .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
         .toList();
     return (
       players: players,
+      totalRounds: (body['total_rounds'] as num?)?.toInt() ?? 5,
       roundSeconds: (body['round_seconds'] as num).toInt(),
+      state: body['state'] as String? ?? 'lobby',
+      round: _roundSnapshot(body['round'] as Map<String, dynamic>?),
       // Absent only when talking to a server older than hardcore mode, where
       // every room is normal. Defaulting the other way would upload blind.
       hardcore: body['hardcore'] as bool? ?? false,
     );
+  }
+
+  /// Host updates the lobby game settings. Only the fields passed are changed.
+  ///
+  /// The server rejects a hardcore change once the room has photos — that lock
+  /// is its call, not this client's.
+  Future<void> updateSettings(
+    String code, {
+    required String hostId,
+    int? totalRounds,
+    int? roundSeconds,
+    bool? hardcore,
+  }) async {
+    // Null means "leave this one alone", so unset fields are dropped rather
+    // than sent as null (which the server would read as an explicit value).
+    final body = <String, dynamic>{'host_id': hostId};
+    if (totalRounds != null) body['total_rounds'] = totalRounds;
+    if (roundSeconds != null) body['round_seconds'] = roundSeconds;
+    if (hardcore != null) body['hardcore'] = hardcore;
+    await _postJson('/rooms/$code/settings', body);
   }
 
   /// Host starts the game.
@@ -194,3 +246,12 @@ class ApiClient {
 
   void close() => _http.close();
 }
+
+RoundSnapshot? _roundSnapshot(Map<String, dynamic>? r) => r == null
+    ? null
+    : (
+        index: (r['index'] as num).toInt(),
+        photo: PhotoInfo.fromJson(r['photo'] as Map<String, dynamic>),
+        endsAt: (r['ends_at'] as num?)?.toInt(),
+        hasGuessed: r['has_guessed'] as bool? ?? false,
+      );

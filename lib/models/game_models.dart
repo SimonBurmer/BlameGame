@@ -64,14 +64,18 @@ class GamePlayer {
 /// A photo reference from the backend (URL is relative to [apiBase]).
 class PhotoInfo {
   final String id;
-  final String ownerId;
+  /// Null while the round is still live: the owner *is* the answer, so the
+  /// room snapshot withholds it until the round is revealed. Nothing in the UI
+  /// reads it — the reveal comes from `round_revealed` — so this stays absent
+  /// rather than being faked with a placeholder id.
+  final String? ownerId;
   final String url;
 
-  const PhotoInfo({required this.id, required this.ownerId, required this.url});
+  const PhotoInfo({required this.id, this.ownerId, required this.url});
 
   factory PhotoInfo.fromJson(Map<String, dynamic> json) => PhotoInfo(
         id: json['id'] as String,
-        ownerId: json['owner_id'] as String,
+        ownerId: json['owner_id'] as String?,
         url: json['url'] as String,
       );
 
@@ -136,6 +140,12 @@ sealed class GameEvent {
           (json['players'] as List<dynamic>)
               .map((e) => GamePlayer.fromJson(e as Map<String, dynamic>))
               .toList(),
+        );
+      case 'settings_updated':
+        return SettingsUpdated(
+          totalRounds: (json['total_rounds'] as num).toInt(),
+          roundSeconds: (json['round_seconds'] as num).toInt(),
+          hardcore: json['hardcore'] as bool,
         );
       case 'room_reset':
         return RoomReset(
@@ -216,6 +226,19 @@ class GameFinished extends GameEvent {
 class PhotosUpdated extends GameEvent {
   final List<GamePlayer> players;
   const PhotosUpdated(this.players);
+}
+
+/// The host changed the game settings in the lobby. Broadcast to everyone, so
+/// non-hosts see what they are about to play.
+class SettingsUpdated extends GameEvent {
+  final int totalRounds;
+  final int roundSeconds;
+  final bool hardcore;
+  const SettingsUpdated({
+    required this.totalRounds,
+    required this.roundSeconds,
+    required this.hardcore,
+  });
 }
 
 class RoomReset extends GameEvent {

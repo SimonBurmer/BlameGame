@@ -67,6 +67,7 @@ class GameController extends ChangeNotifier {
   bool hasGuessedThisRound = false;
   int? lastPointsEarned;
   int roundSeconds = 10;
+  int totalRounds = 5;
 
   /// Whether this room uploads photos blind, learned from the room snapshot.
   ///
@@ -124,11 +125,9 @@ class GameController extends ChangeNotifier {
     return null;
   }
 
-  /// Create a room and join it as the host.
-  ///
-  /// [hardcore] is fixed for the room's lifetime; it cannot be changed later.
-  Future<void> createAndHost(String name, {bool hardcore = false}) async {
-    final code = await api.createRoom(hardcore: hardcore);
+  /// Create a room and join it as the host. Settings are chosen in the lobby.
+  Future<void> createAndHost(String name) async {
+    final code = await api.createRoom();
     await _join(code, name);
   }
 
@@ -150,12 +149,7 @@ class GameController extends ChangeNotifier {
     // their photo is an automatic zero.
     _connectSocket();
     try {
-      final snapshot = await api.getRoom(code);
-      _mergeRoster(snapshot.players);
-      roundSeconds = snapshot.roundSeconds;
-      // The host reads the mode back off the snapshot too, rather than
-      // trusting what it asked for, so every client agrees on one source.
-      hardcore = snapshot.hardcore;
+      _applySnapshot(await api.getRoom(code, playerId: result.playerId));
     } catch (_) {
       // Don't leave a half-joined controller behind.
       await _teardownSocket();
@@ -165,6 +159,48 @@ class GameController extends ChangeNotifier {
       rethrow;
     }
     notifyListeners();
+  }
+
+  /// Seeds every bit of game state the server reports, for both a fresh join
+  /// and a [reconnect].
+  ///
+  /// Doing this on join is what lets a late joiner (or a player whose socket
+  /// dropped) land in the phase the room is actually in: without it the client
+  /// sits in the lobby until the *next* socket event happens to arrive, which
+  /// mid-reveal can be seconds away and at the end of the game never comes.
+  void _applySnapshot(RoomSnapshot snapshot) {
+    _mergeRoster(snapshot.players);
+    roundSeconds = snapshot.roundSeconds;
+    totalRounds = snapshot.totalRounds;
+    // The host reads the mode back off the snapshot too, rather than
+    // trusting what it asked for, so every client agrees on one source.
+    hardcore = snapshot.hardcore;
+
+    final round = snapshot.round;
+    if (round != null) {
+      roundIndex = round.index;
+      currentPhoto = round.photo;
+      roundEndsAt = round.endsAt;
+      hasGuessedThisRound = round.hasGuessed;
+      // Only present once the round is revealed; while it is live the server
+      // withholds it, since it is the answer being guessed.
+      revealedOwnerId = round.photo.ownerId;
+    }
+
+    switch (snapshot.state) {
+      case 'in_round':
+        phase = GamePhase.inRound;
+      case 'revealing':
+        phase = GamePhase.revealed;
+      case 'finished':
+        // Rankings ride in on the roster: the snapshot carries every player's
+        // final score, so there is no separate results payload to wait for.
+        _finalRankings = [..._players]
+          ..sort((a, b) => b.score.compareTo(a.score));
+        phase = GamePhase.finished;
+      default:
+        phase = GamePhase.lobby;
+    }
   }
 
   /// Folds a server snapshot into the live roster.
@@ -215,10 +251,9 @@ class GameController extends ChangeNotifier {
   Future<void> reconnect() async {
     await _teardownSocket();
     _connectSocket();
-    final snapshot = await api.getRoom(session.roomCode);
-    _mergeRoster(snapshot.players);
-    roundSeconds = snapshot.roundSeconds;
-    hardcore = snapshot.hardcore;
+    _applySnapshot(
+      await api.getRoom(session.roomCode, playerId: session.playerId),
+    );
     connectionError = null;
     notifyListeners();
   }
@@ -278,6 +313,14 @@ class GameController extends ChangeNotifier {
         _players
           ..clear()
           ..addAll(players);
+      case SettingsUpdated(
+          :final totalRounds,
+          :final roundSeconds,
+          :final hardcore
+        ):
+        this.totalRounds = totalRounds;
+        this.roundSeconds = roundSeconds;
+        this.hardcore = hardcore;
       case GameFinished(:final rankings):
         _finalRankings = rankings;
         phase = GamePhase.finished;
@@ -325,15 +368,37 @@ class GameController extends ChangeNotifier {
     return uploaded;
   }
 
-  /// Host starts the game.
-  Future<void> startGame({int totalRounds = 5, int roundSeconds = 10}) async {
+  /// True once anyone in the room has contributed a photo. Hardcore mode is
+  /// locked from here on (the server enforces it too).
+  bool get anyPhotosUploaded => _players.any((p) => p.hasPhotos);
+
+  /// Host changes the lobby settings. Only the fields passed are changed; the
+  /// resulting `settings_updated` broadcast is what updates local state.
+  Future<void> updateSettings({
+    int? totalRounds,
+    int? roundSeconds,
+    bool? hardcore,
+  }) =>
+      api.updateSettings(
+        session.roomCode,
+        hostId: session.playerId,
+        totalRounds: totalRounds,
+        roundSeconds: roundSeconds,
+        hardcore: hardcore,
+      );
+
+  /// Host starts the game with the room's configured settings.
+  Future<void> startGame({int? totalRounds, int? roundSeconds}) async {
+    final rounds = totalRounds ?? this.totalRounds;
+    final seconds = roundSeconds ?? this.roundSeconds;
     await api.startGame(
       session.roomCode,
       hostId: session.playerId,
-      totalRounds: totalRounds,
-      roundSeconds: roundSeconds,
+      totalRounds: rounds,
+      roundSeconds: seconds,
     );
-    this.roundSeconds = roundSeconds;
+    this.totalRounds = rounds;
+    this.roundSeconds = seconds;
   }
 
   /// Leave the room, removing this player for everyone.

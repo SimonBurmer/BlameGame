@@ -1,10 +1,10 @@
 ---
 id: TASK-17
 title: In-round live scoreboard / per-round results
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-08-18 14:40'
-updated_date: '2026-08-22 18:02'
+updated_date: '2026-08-22 22:50'
 labels:
   - frontend
   - backend
@@ -12,7 +12,7 @@ labels:
 milestone: m-3
 dependencies: []
 priority: low
-ordinal: 17000
+ordinal: 48000
 ---
 
 ## Description
@@ -23,6 +23,6 @@ No per-round scoreboard broadcast — scores only appear at the end. The real ga
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Server broadcasts per-round results including updated standings
-- [x] #2 Client shows a between-rounds scoreboard
+- [ ] #1 Server broadcasts per-round results including updated standings
+- [ ] #2 Client shows a between-rounds scoreboard
 <!-- AC:END -->

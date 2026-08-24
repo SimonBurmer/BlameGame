@@ -5,8 +5,14 @@ import '../models/game_models.dart';
 import '../services/photo_sampler.dart';
 import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
+import '../ui/app_buttons.dart';
 import '../ui/connection_banner.dart';
+import '../ui/error_text.dart';
+import '../ui/gradient_scaffold.dart';
+import '../ui/pill_badge.dart';
+import '../ui/player_avatar.dart';
 import '../ui/player_cosmetics.dart';
+import '../ui/tinted_card.dart';
 import 'game_screen.dart';
 
 class LobbyScreen extends StatefulWidget {
@@ -98,7 +104,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
         final chosen = await showModalBottomSheet<List<SampledPhoto>>(
           context: context,
           isScrollControlled: true,
-          backgroundColor: const Color(0xFF16213E),
+          backgroundColor: context.colors.bgMid,
           builder: (_) => _PhotoPreviewSheet(sampler: _sampler, initial: photos),
         );
         if (chosen == null || chosen.isEmpty) return;
@@ -120,9 +126,28 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   Future<void> _start() async {
     try {
-      await c.startGame(totalRounds: 5, roundSeconds: 10);
+      await c.startGame();
     } catch (e) {
       _snack('Could not start: $e');
+    }
+  }
+
+  /// Push one setting change. The server answers with a `settings_updated`
+  /// broadcast, which is what actually moves local state — so a rejected
+  /// change (a hardcore flip after photos landed) simply doesn't take.
+  Future<void> _setSetting({
+    int? totalRounds,
+    int? roundSeconds,
+    bool? hardcore,
+  }) async {
+    try {
+      await c.updateSettings(
+        totalRounds: totalRounds,
+        roundSeconds: roundSeconds,
+        hardcore: hardcore,
+      );
+    } catch (e) {
+      _snack(friendlyError(e));
     }
   }
 
@@ -173,94 +198,78 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F3460)],
+    final colors = context.colors;
+    return GradientScaffold(
+      gradient: AppGradient.diagonal,
+      child: Column(
+        children: [
+          ConnectionBanner(controller: c),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                // IconButton, not a bare GestureDetector: a 24x24 icon is
+                // half the 48x48 minimum tap target and carries no button
+                // semantics for screen readers.
+                IconButton(
+                  onPressed: _leave,
+                  tooltip: 'Leave room',
+                  icon: Icon(
+                    Icons.arrow_back_ios,
+                    color: colors.onSurfaceStrong,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    'LOBBY',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ),
+                const SizedBox(width: 24),
+              ],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              ConnectionBanner(controller: c),
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    // IconButton, not a bare GestureDetector: a 24x24 icon is
-                    // half the 48x48 minimum tap target and carries no button
-                    // semantics for screen readers.
-                    IconButton(
-                      onPressed: _leave,
-                      tooltip: 'Leave room',
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const Expanded(
-                      child: Text(
-                        'LOBBY',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 3,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 24),
-                  ],
-                ),
-              ),
-              _gameCode(),
-              const SizedBox(height: 12),
-              Text(
-                'Share this code with friends',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 28),
-              Text(
-                'PLAYERS (${c.players.length})',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.6),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 2,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  itemCount: c.players.length,
-                  itemBuilder: (context, i) => _playerTile(c.players[i]),
-                ),
-              ),
-              _bottomControls(),
-            ],
+          _gameCode(),
+          const SizedBox(height: 12),
+          Text(
+            'Share this code with friends',
+            style: TextStyle(
+              color: colors.onSurfaceStrong.withValues(alpha: 0.4),
+              fontSize: 13,
+            ),
           ),
-        ),
+          const SizedBox(height: 28),
+          Text(
+            'PLAYERS (${c.players.length})',
+            style: TextStyle(
+              color: colors.onSurfaceStrong.withValues(alpha: 0.6),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              itemCount: c.players.length,
+              itemBuilder: (context, i) => _playerTile(c.players[i]),
+            ),
+          ),
+          _settingsPanel(),
+          _bottomControls(),
+        ],
       ),
     );
   }
 
   Widget _gameCode() {
-    return Container(
+    return TintedCard(
       margin: const EdgeInsets.symmetric(horizontal: 40),
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-      ),
+      fillAlpha: 0.08,
+      borderAlpha: 0.15,
       // FittedBox: the code is 24pt with 6pt letter-spacing, which overflows a
       // narrow phone (and any phone at a large text scale) without it.
       child: FittedBox(
@@ -292,46 +301,31 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 
   Widget _playerTile(GamePlayer player) {
-    return Container(
+    final colors = context.colors;
+    return TintedCard(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: player.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: player.color.withValues(alpha: 0.3),
-          width: 1.5,
-        ),
-      ),
+      tint: player.color,
+      fillAlpha: 0.12,
+      borderAlpha: 0.3,
+      borderWidth: 1.5,
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor: player.color.withValues(alpha: 0.3),
-            child: Icon(player.avatar, color: player.color, size: 26),
-          ),
+          PlayerAvatar(player: player, radius: 22, iconSize: 26),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
               player.id == c.myPlayerId ? '${player.name} (you)' : player.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
           if (player.isHost)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE94560).withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
+            PillBadge(
+              color: colors.brand,
+              child: Text(
                 'HOST',
                 style: TextStyle(
-                  color: Color(0xFFE94560),
+                  color: colors.brand,
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 1,
@@ -342,13 +336,13 @@ class _LobbyScreenState extends State<LobbyScreen> {
             Icon(
               Icons.check_circle,
               semanticLabel: '${player.name} has added photos',
-              color: Colors.greenAccent.withValues(alpha: 0.7),
+              color: colors.correct.withValues(alpha: 0.7),
             )
           else
             Icon(
               Icons.hourglass_empty,
               semanticLabel: '${player.name} has not added photos yet',
-              color: Colors.white.withValues(alpha: 0.35),
+              color: colors.onSurfaceStrong.withValues(alpha: 0.35),
             ),
           // Only the host can kick, and never themselves — the server enforces
           // both, this just keeps the button from offering an impossible action.
@@ -358,7 +352,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
               tooltip: 'Remove ${player.name}',
               icon: Icon(
                 Icons.person_remove,
-                color: Colors.white.withValues(alpha: 0.5),
+                color: colors.onSurfaceFaint,
               ),
             ),
         ],
@@ -380,21 +374,23 @@ class _LobbyScreenState extends State<LobbyScreen> {
   /// unknown case says so instead of implying a preview is coming.
   Widget _photoModeNotice() {
     final hardcore = c.hardcore;
+    final colors = context.colors;
     final (IconData icon, Color color, String text) = switch (hardcore) {
       null => (
         Icons.hourglass_empty,
-        Colors.white54,
+        // 54%, not the palette's 50% faint — kept exact.
+        colors.onSurfaceStrong.withValues(alpha: 0.54),
         'Checking how photos are shared in this game…',
       ),
       true => (
         Icons.visibility_off,
-        const Color(0xFFE94560),
+        colors.brand,
         'HARDCORE — your photos are picked at random and shared '
             'without showing them to you first.',
       ),
       false => (
         Icons.visibility,
-        Colors.white70,
+        colors.onSurfaceMuted,
         'You will see the picked photos and can reshuffle before sharing.',
       ),
     };
@@ -421,86 +417,148 @@ class _LobbyScreenState extends State<LobbyScreen> {
     );
   }
 
+  /// Game settings. The host edits them; everyone else reads them, so nobody
+  /// is surprised by how long the game is or how photos are shared.
+  ///
+  /// Hardcore is only editable while the room has no photos at all: after that
+  /// the switch is disabled and says why. The server enforces the same lock,
+  /// so this is convenience, not the guarantee.
+  Widget _settingsPanel() {
+    final colors = context.colors;
+    final locked = c.anyPhotosUploaded;
+    final hardcore = c.hardcore ?? false;
+    return TintedCard(
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      fillAlpha: 0.06,
+      child: Column(
+        children: [
+          _settingRow(
+            'Rounds',
+            '${c.totalRounds}',
+            onLess: c.totalRounds > 1
+                ? () => _setSetting(totalRounds: c.totalRounds - 1)
+                : null,
+            onMore: c.totalRounds < 20
+                ? () => _setSetting(totalRounds: c.totalRounds + 1)
+                : null,
+          ),
+          _settingRow(
+            'Seconds per round',
+            '${c.roundSeconds}',
+            onLess: c.roundSeconds > 5
+                ? () => _setSetting(roundSeconds: c.roundSeconds - 5)
+                : null,
+            onMore: c.roundSeconds < 60
+                ? () => _setSetting(roundSeconds: c.roundSeconds + 5)
+                : null,
+          ),
+          if (c.isHost)
+            SwitchListTile.adaptive(
+              value: hardcore,
+              onChanged:
+                  locked ? null : (v) => _setSetting(hardcore: v),
+              contentPadding: EdgeInsets.zero,
+              activeThumbColor: colors.brand,
+              title: Text(
+                'Hardcore mode',
+                style: TextStyle(
+                  color: colors.onSurfaceStrong,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                locked
+                    ? 'Locked — photos have already been added to this room.'
+                    : "Everyone's photos are shared without a preview or "
+                        'reshuffle. Locks once the first photo is added.',
+                style: TextStyle(color: colors.onSurfaceMuted, fontSize: 12),
+              ),
+            )
+          else
+            _settingRow('Hardcore mode', hardcore ? 'ON' : 'OFF'),
+        ],
+      ),
+    );
+  }
+
+  /// One setting line. Read-only unless a stepper callback is supplied, and
+  /// only the host gets those.
+  Widget _settingRow(
+    String label,
+    String value, {
+    VoidCallback? onLess,
+    VoidCallback? onMore,
+  }) {
+    final colors = context.colors;
+    final stepper = c.isHost && (onLess != null || onMore != null);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(color: colors.onSurfaceStrong, fontSize: 15),
+          ),
+        ),
+        if (stepper)
+          IconButton(
+            onPressed: onLess,
+            tooltip: 'Fewer $label',
+            icon: Icon(Icons.remove_circle_outline, color: colors.onSurfaceMuted),
+          ),
+        Text(
+          value,
+          style: TextStyle(
+            color: colors.brand,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (stepper)
+          IconButton(
+            onPressed: onMore,
+            tooltip: 'More $label',
+            icon: Icon(Icons.add_circle_outline, color: colors.onSurfaceMuted),
+          ),
+      ],
+    );
+  }
+
   Widget _bottomControls() {
     // Everyone can add a photo; only the host can start, and only once at
     // least two people have contributed (the server enforces the same rule).
     final canStart = c.canStart;
+    final colors = context.colors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         children: [
           _photoModeNotice(),
-          SizedBox(
-            width: double.infinity,
+          SecondaryButton(
+            label: _uploading
+                ? 'ADDING PHOTOS…'
+                : _photoUploaded
+                ? 'PHOTOS ADDED — ADD MORE'
+                : 'ADD PHOTOS',
+            icon: _photoUploaded ? Icons.check : Icons.add_a_photo,
+            onPressed: _uploading || !c.photoModeKnown ? null : _addPhotos,
             height: 50,
-            child: OutlinedButton.icon(
-              onPressed: _uploading || !c.photoModeKnown ? null : _addPhotos,
-              icon: _uploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Icon(
-                      _photoUploaded ? Icons.check : Icons.add_a_photo,
-                      color: Colors.white,
-                    ),
-              label: Text(
-                _uploading
-                    ? 'ADDING PHOTOS…'
-                    : _photoUploaded
-                    ? 'PHOTOS ADDED — ADD MORE'
-                    : 'ADD PHOTOS',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
+            busy: _uploading,
+            letterSpacing: null,
           ),
           const SizedBox(height: 12),
           if (c.isHost)
-            SizedBox(
-              width: double.infinity,
+            PrimaryButton(
+              label: canStart ? 'START GAME' : _blockedReason(),
+              onPressed: canStart ? _start : null,
               height: 56,
-              child: ElevatedButton(
-                onPressed: canStart ? _start : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE94560),
-                  disabledBackgroundColor: const Color(
-                    0xFFE94560,
-                  ).withValues(alpha: 0.3),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                child: Text(
-                  canStart ? 'START GAME' : _blockedReason(),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 2,
-                  ),
-                ),
-              ),
+              radius: 16,
+              fontSize: 18,
             )
           else
             Text(
               'Waiting for the host to start…',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 14,
-              ),
+              style: TextStyle(color: colors.onSurfaceFaint, fontSize: 14),
             ),
         ],
       ),
@@ -558,16 +616,17 @@ class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.colors;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'THESE PHOTOS?',
               style: TextStyle(
-                color: Colors.white,
+                color: colors.onSurfaceStrong,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 2,
@@ -576,10 +635,7 @@ class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
             const SizedBox(height: 4),
             Text(
               'Nothing is uploaded until you tap Use these',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
-                fontSize: 13,
-              ),
+              style: TextStyle(color: colors.onSurfaceFaint, fontSize: 13),
             ),
             const SizedBox(height: 16),
             Flexible(
@@ -608,10 +664,11 @@ class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _reshuffling ? null : _reshuffle,
-                    icon: const Icon(Icons.shuffle, color: Colors.white),
-                    label: const Text(
+                    icon: Icon(Icons.shuffle,
+                        color: colors.onSurfaceStrong),
+                    label: Text(
                       'RESHUFFLE',
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: colors.onSurfaceStrong),
                     ),
                   ),
                 ),
@@ -622,12 +679,12 @@ class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
                         ? null
                         : () => Navigator.pop(context, _photos),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE94560),
+                      backgroundColor: colors.brand,
                     ),
-                    child: const Text(
+                    child: Text(
                       'USE THESE',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: colors.onSurfaceStrong,
                         fontWeight: FontWeight.bold,
                       ),
                     ),

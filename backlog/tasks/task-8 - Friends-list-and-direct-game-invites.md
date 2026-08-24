@@ -4,7 +4,7 @@ title: Friends list and direct game invites
 status: To Do
 assignee: []
 created_date: '2026-08-18 14:39'
-updated_date: '2026-08-22 18:03'
+updated_date: '2026-08-22 22:44'
 labels:
   - frontend
   - backend

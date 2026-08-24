@@ -1,10 +1,10 @@
 ---
 id: TASK-49
 title: round_started leaks the photo owner to every client before anyone guesses
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-23 10:17'
-updated_date: '2026-08-23 10:17'
+updated_date: '2026-08-24 11:08'
 labels:
   - backend
   - security
@@ -29,7 +29,7 @@ Also grep for any other broadcast that includes the owner before reveal.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 round_started no longer includes the photo owner
-- [ ] #2 The owner is disclosed only at reveal
-- [ ] #3 A test asserts the live-round broadcast withholds the owner
+- [x] #1 round_started no longer includes the photo owner
+- [x] #2 The owner is disclosed only at reveal
+- [x] #3 A test asserts the live-round broadcast withholds the owner
 <!-- AC:END -->

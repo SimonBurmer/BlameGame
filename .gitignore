@@ -56,3 +56,10 @@ apps/website/.next/
 apps/website/out/
 apps/website/next-env.d.ts
 apps/website/tsconfig.tsbuildinfo
+
+# Desktop platforms are not targeted (iOS/Android/web only), but `flutter pub get`
+# still regenerates plugin registrants into linux/ and macos/. The real platform
+# projects were deleted; this keeps the regenerated scaffolding out of the tree.
+/linux/
+/macos/
+/windows/

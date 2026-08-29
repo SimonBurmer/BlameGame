@@ -10,6 +10,9 @@ remote_operations: true
 auto_commit: false
 filesystem_only: false
 bypass_git_hooks: false
-check_active_branches: true
+# Off: with it on, every task read re-resolves tasks across all branches, decides the
+# set changed, and broadcasts "tasks-updated" — which the board answers with another
+# read. That loop pins the web board at ~10 reloads/sec and it never finishes loading.
+check_active_branches: false
 active_branch_days: 30
 task_prefix: "task"

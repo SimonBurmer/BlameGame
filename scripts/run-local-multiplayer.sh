@@ -41,12 +41,35 @@ else
 fi
 
 # --- backlog board -------------------------------------------------------
-if command -v backlog > /dev/null 2>&1; then
-  echo "Starting Backlog.md board on port $BACKLOG_PORT..."
-  backlog browser --port "$BACKLOG_PORT" --no-open &
-  PIDS+=("$!")
-  sleep 1
+# The board is a tool with its own lifetime, not part of this session, so it is
+# started detached and deliberately NOT added to PIDS.
+#
+# It used to be a child of this script. The trap below then killed it on exit
+# while the tab opened three lines earlier stayed open — and the Backlog.md
+# frontend reconnects to its websocket on a timer forever rather than showing an
+# error, so the board looked like a page that never finished loading.
+if curl -sf "http://127.0.0.1:$BACKLOG_PORT/api/config" > /dev/null 2>&1; then
+  echo "Backlog.md board already running at http://127.0.0.1:$BACKLOG_PORT"
   open "http://127.0.0.1:$BACKLOG_PORT" || true
+elif command -v backlog > /dev/null 2>&1; then
+  echo "Starting Backlog.md board on port $BACKLOG_PORT..."
+  # --non-interactive because a backgrounded process has no terminal to answer
+  # the "port in use, try another?" prompt with.
+  nohup backlog browser --port "$BACKLOG_PORT" --no-open --non-interactive \
+    > /tmp/blame-backlog-board.log 2>&1 &
+  BOARD_PID=$!
+  disown "$BOARD_PID" 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    curl -sf "http://127.0.0.1:$BACKLOG_PORT/api/config" > /dev/null 2>&1 && break
+    sleep 0.5
+  done
+  if curl -sf "http://127.0.0.1:$BACKLOG_PORT/api/config" > /dev/null 2>&1; then
+    echo "Board up at http://127.0.0.1:$BACKLOG_PORT"
+    echo "  it outlives this script — 'kill $BOARD_PID' to stop it"
+    open "http://127.0.0.1:$BACKLOG_PORT" || true
+  else
+    echo "Board did not come up; see /tmp/blame-backlog-board.log" >&2
+  fi
 else
   echo "Skipping Backlog.md board: 'backlog' CLI not on PATH (npm i -g backlog.md)."
 fi

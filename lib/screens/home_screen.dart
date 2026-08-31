@@ -89,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 96, height: 96),
               const SizedBox(height: 16),
               Text(
-                'BLAME\nGAME',
+                'PHOTO\nBLAME',
                 textAlign: TextAlign.center,
                 style: text.displayLarge,
               ),

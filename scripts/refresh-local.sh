@@ -20,9 +20,9 @@ cd "$(dirname "$0")/.."
 
 PORT="${PORT:-8010}"
 API_BASE="${API_BASE:-http://localhost:$PORT}"
-BUNDLE_ID="${BUNDLE_ID:-com.blamegame.app}"
+BUNDLE_ID="${BUNDLE_ID:-com.photoblame.app}"
 APP_PATH="$PWD/build/ios/iphonesimulator/Runner.app"
-LOG="${LOG:-/tmp/blamegame-backend.log}"
+LOG="${LOG:-/tmp/photoblame-backend.log}"
 
 what="${1:-all}"
 

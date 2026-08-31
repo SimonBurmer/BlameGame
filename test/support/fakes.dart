@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:blame_game/models/game_models.dart';
-import 'package:blame_game/services/game_socket.dart';
+import 'package:photo_blame/models/game_models.dart';
+import 'package:photo_blame/services/game_socket.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 

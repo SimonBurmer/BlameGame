@@ -5,13 +5,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blame_game/main.dart';
+import 'package:photo_blame/main.dart';
 
 void main() {
   testWidgets('Home screen renders title and actions', (tester) async {
-    await tester.pumpWidget(const BlameGameApp());
+    await tester.pumpWidget(const PhotoBlameApp());
 
-    expect(find.text('BLAME\nGAME'), findsOneWidget);
+    expect(find.text('PHOTO\nBLAME'), findsOneWidget);
     expect(find.text('CREATE GAME'), findsOneWidget);
     expect(find.text('JOIN GAME'), findsOneWidget);
 

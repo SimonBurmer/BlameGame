@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:blame_game/screens/lobby_screen.dart';
-import 'package:blame_game/services/photo_sampler.dart';
+import 'package:photo_blame/screens/lobby_screen.dart';
+import 'package:photo_blame/services/photo_sampler.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

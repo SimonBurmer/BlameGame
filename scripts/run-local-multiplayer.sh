@@ -56,7 +56,7 @@ elif command -v backlog > /dev/null 2>&1; then
   # --non-interactive because a backgrounded process has no terminal to answer
   # the "port in use, try another?" prompt with.
   nohup backlog browser --port "$BACKLOG_PORT" --no-open --non-interactive \
-    > /tmp/blame-backlog-board.log 2>&1 &
+    > /tmp/photoblame-backlog-board.log 2>&1 &
   BOARD_PID=$!
   disown "$BOARD_PID" 2>/dev/null || true
   for _ in $(seq 1 20); do
@@ -68,7 +68,7 @@ elif command -v backlog > /dev/null 2>&1; then
     echo "  it outlives this script — 'kill $BOARD_PID' to stop it"
     open "http://127.0.0.1:$BACKLOG_PORT" || true
   else
-    echo "Board did not come up; see /tmp/blame-backlog-board.log" >&2
+    echo "Board did not come up; see /tmp/photoblame-backlog-board.log" >&2
   fi
 else
   echo "Skipping Backlog.md board: 'backlog' CLI not on PATH (npm i -g backlog.md)."

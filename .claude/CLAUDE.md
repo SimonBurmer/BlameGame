@@ -1,8 +1,8 @@
-# Blame Game — Project Knowledge
+# Photo Blame — Project Knowledge
 
-A party game in the mould of Photo Roulette: players join a room, contribute random
-photos from their camera roll, then guess *whose* photo each round shows. Points are
-awarded for correct + fast guesses; rounds tally into a final leaderboard.
+A party game: players join a room, contribute random photos from their camera roll,
+then guess *whose* photo each round shows. Points are awarded for correct + fast
+guesses; rounds tally into a final leaderboard.
 
 ## Stack
 
@@ -67,8 +67,12 @@ Every launcher icon is generated — never hand-edit the PNGs, regenerate them.
   PNGs opaque without a lossy JPEG round-trip.
 - `logo_mark.png` (+ `2.0x/`, `3.0x/`) is generated too — the home screen shows the mark,
   and Flutter cannot render SVG without a package.
-- Colours come from `AppColors.dark` only. The mark is a pointing hand: white, with the
-  brand red on the cuff so something other than white survives at 40px.
+- Colours come from `AppColors.dark` only. The icon is three photo cards fanned like a
+  hand, on a brand-red sunburst, under sixty pieces of confetti. Two consequences:
+  **red is not in the confetti palette** (a red chip on a red sunburst is invisible —
+  the pieces are teal, gold, white and a dark navy), and `logo_mark.svg` keeps only the
+  largest dozen pieces, because sixty is texture at 1024px and mush at the 96px the
+  home screen draws the mark at.
 
 ## Tickets / Backlog
 

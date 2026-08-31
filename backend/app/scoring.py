@@ -1,4 +1,4 @@
-"""Pure scoring logic for Blame Game.
+"""Pure scoring logic for Photo Blame.
 
 Kept deliberately free of any framework, model, or I/O code so it is trivial
 to unit-test. This mirrors the rule the Flutter app used inline

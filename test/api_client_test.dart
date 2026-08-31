@@ -7,7 +7,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:blame_game/services/api_client.dart';
+import 'package:photo_blame/services/api_client.dart';
 
 void main() {
   test('createRoom posts to /rooms and returns the code', () async {

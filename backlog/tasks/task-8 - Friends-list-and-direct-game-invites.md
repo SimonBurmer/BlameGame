@@ -19,7 +19,7 @@ ordinal: 8000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Photo Roulette lets you add friends and invite them directly to games. Currently the only way in is a 5-char room code. Add a friends system and invite flow. Depends on user accounts.
+Currently the only way into a game is a 5-char room code. Add a friends system and invite flow. Depends on user accounts.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

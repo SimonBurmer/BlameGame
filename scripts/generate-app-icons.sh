@@ -54,6 +54,23 @@ echo "android  legacy + adaptive across 5 densities"
   "web/icons/Icon-maskable-192.png:192" "web/icons/Icon-maskable-512.png:512"
 echo "web      favicon + 4 icons"
 
+# --- Launch screens -------------------------------------------------------
+# Drawn by the OS before any Dart runs, so the mark has to be a real image
+# rather than a Flutter widget. 120pt on both platforms, which is the size the
+# iOS storyboard's centred image view and the Android layer-list expect.
+IOSLAUNCH=ios/Runner/Assets.xcassets/LaunchImage.imageset
+"${RAST[@]}" "$SRC/logo_mark.svg" alpha \
+  "$IOSLAUNCH/LaunchImage.png:120" \
+  "$IOSLAUNCH/LaunchImage@2x.png:240" \
+  "$IOSLAUNCH/LaunchImage@3x.png:360"
+launch=()
+for spec in mdpi:120 hdpi:180 xhdpi:240 xxhdpi:360 xxxhdpi:480; do
+  IFS=: read -r d px <<<"$spec"
+  launch+=("$RES/mipmap-$d/launch_image.png:$px")
+done
+"${RAST[@]}" "$SRC/logo_mark.svg" alpha "${launch[@]}"
+echo "launch   iOS 1x/2x/3x + Android across 5 densities"
+
 # --- In-app asset ---------------------------------------------------------
 # Flutter has no SVG renderer without a package, so the home screen uses a PNG.
 # Resolution-aware variants, displayed at 96 logical pixels.

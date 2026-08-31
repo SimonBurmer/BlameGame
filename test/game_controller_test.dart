@@ -4,9 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:blame_game/models/game_models.dart';
-import 'package:blame_game/services/api_client.dart';
-import 'package:blame_game/state/game_controller.dart';
+import 'package:photo_blame/models/game_models.dart';
+import 'package:photo_blame/services/api_client.dart';
+import 'package:photo_blame/state/game_controller.dart';
 
 import 'support/fakes.dart';
 

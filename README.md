@@ -1,11 +1,13 @@
-# Blame Game
+# Photo Blame
 
-Blame Game is a party game: everyone throws photos from their camera roll into a
+Photo Blame is a party game: everyone throws photos from their camera roll into a
 room, and each round you guess whose photo is on screen — faster guesses score more.
+
+**Website:** [photoblame.com](https://photoblame.com) · **Contact:** hello@photoblame.com
 
 ## Getting Started
 
-Blame Game is being built with Flutter.
+Photo Blame is being built with Flutter.
 
 ### First-time setup
 
@@ -51,12 +53,12 @@ flutter run               # fresh build; press "q" to fully quit a running sessi
 If the simulator still shows an old build, uninstall it first:
 
 ```sh
-xcrun simctl uninstall booted com.blamegame.app
+xcrun simctl uninstall booted com.photoblame.app
 ```
 
 ### Local dev, hot-reload mode (backend + Backlog board + two simulators)
 
-Blame Game needs 2+ players to start a game. To test that on one machine,
+Photo Blame needs 2+ players to start a game. To test that on one machine,
 run the app on two simulators at once — one player creates the game and shares
 the code, the other joins with it. One script starts everything:
 

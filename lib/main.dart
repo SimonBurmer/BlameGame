@@ -4,16 +4,16 @@ import 'screens/home_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
-  runApp(const BlameGameApp());
+  runApp(const PhotoBlameApp());
 }
 
-class BlameGameApp extends StatelessWidget {
-  const BlameGameApp({super.key});
+class PhotoBlameApp extends StatelessWidget {
+  const PhotoBlameApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Blame Game',
+      title: 'Photo Blame',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const HomeScreen(),

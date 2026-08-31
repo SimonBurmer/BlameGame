@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:blame_game/models/game_models.dart';
-import 'package:blame_game/screens/results_screen.dart';
+import 'package:photo_blame/models/game_models.dart';
+import 'package:photo_blame/screens/results_screen.dart';
 
 import 'support/fakes.dart';
 import 'support/pump.dart';

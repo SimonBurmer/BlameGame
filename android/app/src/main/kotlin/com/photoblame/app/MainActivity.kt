@@ -1,4 +1,4 @@
-package com.blamegame.app
+package com.photoblame.app
 
 import io.flutter.embedding.android.FlutterActivity
 

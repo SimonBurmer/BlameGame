@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:blame_game/theme/app_theme.dart';
-import 'package:blame_game/models/game_models.dart';
-import 'package:blame_game/services/api_client.dart';
-import 'package:blame_game/state/game_controller.dart';
+import 'package:photo_blame/theme/app_theme.dart';
+import 'package:photo_blame/models/game_models.dart';
+import 'package:photo_blame/services/api_client.dart';
+import 'package:photo_blame/state/game_controller.dart';
 
 import 'fakes.dart';
 

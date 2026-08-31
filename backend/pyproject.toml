@@ -1,7 +1,7 @@
 [project]
-name = "blame-game-backend"
+name = "photo-blame-backend"
 version = "0.1.0"
-description = "FastAPI backend for the Blame Game game (in-memory, WebSockets)."
+description = "FastAPI backend for the Photo Blame game (in-memory, WebSockets)."
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110",

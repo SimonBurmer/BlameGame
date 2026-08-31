@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:blame_game/models/game_models.dart';
-import 'package:blame_game/ui/player_cosmetics.dart';
+import 'package:photo_blame/models/game_models.dart';
+import 'package:photo_blame/ui/player_cosmetics.dart';
 
 void main() {
   group('PlayerCosmetics', () {

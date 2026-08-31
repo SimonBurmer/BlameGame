@@ -1,6 +1,6 @@
 {
-    "name": "Blame Game",
-    "short_name": "Blame Game",
+    "name": "Photo Blame",
+    "short_name": "Photo Blame",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#1A1A2E",

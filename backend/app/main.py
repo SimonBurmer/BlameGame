@@ -37,7 +37,8 @@ from app.game import (
     submit_guess,
 )
 from app.models import Player, Room, RoomState
-from app.store import RoomNotFound, store
+from app.photo_meta import strip_metadata
+from app.store import RoomNotFound, StoreFull, store
 from app.timer import RoundDriver
 
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "uploads"))
@@ -231,7 +232,15 @@ def _get_room(code: str) -> Room:
 @app.post("/rooms")
 def create_room(body: CreateRoomBody | None = None) -> dict:
     # Body is optional so a client that posts nothing still gets a normal room.
-    room = store.create_room(hardcore=bool(body and body.hardcore))
+    try:
+        room = store.create_room(hardcore=bool(body and body.hardcore))
+    except StoreFull:
+        # 503 rather than 429: this is the server being out of capacity, not
+        # this caller being rate-limited, and retrying later is the right
+        # advice for both a real player and a flood.
+        raise HTTPException(
+            status_code=503, detail="the server is at capacity, try again shortly"
+        )
     return {"code": room.code, "hardcore": room.hardcore}
 
 
@@ -268,6 +277,11 @@ async def upload_photo(
         ext = "png"
     else:
         raise HTTPException(status_code=400, detail="file must be a JPEG or PNG")
+
+    # EXIF carries GPS. Every photo in a room is served to every player in it,
+    # so the metadata is stripped here rather than trusted to the client --
+    # see app/photo_meta.py.
+    data = strip_metadata(data)
 
     # Register the photo before writing it, so a rejected upload never leaves
     # an orphan file on disk.
@@ -522,7 +536,12 @@ def health() -> dict:
 
 
 if __name__ == "__main__":
+    # Convenience entrypoint only; Railway starts uvicorn itself (see
+    # railway.json). Auto-reload is opt-in rather than the default, because
+    # this file is the one that gets deployed and a reloader in production
+    # doubles the process and duplicates the in-memory store.
     import uvicorn
 
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=True)
+    reload = os.environ.get("RELOAD", "").lower() in {"1", "true", "yes"}
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=reload)

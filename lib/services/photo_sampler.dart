@@ -9,6 +9,14 @@ class PhotoPermissionDenied implements Exception {
   String toString() => 'Photo library permission was denied';
 }
 
+/// How long to wait for the system permission prompt to be answered.
+///
+/// The prompt is normally answered in seconds, but the request future does not
+/// complete until it is — and if it never is, the lobby sits on "ADDING
+/// PHOTOS…" with the button disabled and no way back. A bounded wait turns
+/// that dead end into a message the player can act on.
+const Duration permissionTimeout = Duration(minutes: 2);
+
 /// One sampled camera-roll photo: its library [id] (so a reshuffle can avoid
 /// offering the same picture twice), a small [thumbnail] for the preview grid,
 /// and the JPEG [bytes] that get uploaded once confirmed.
@@ -62,7 +70,10 @@ class PhotoSampler {
     required int count,
     Set<String> exclude = const {},
   }) async {
-    final permission = await PhotoManager.requestPermissionExtend();
+    final permission = await PhotoManager.requestPermissionExtend().timeout(
+      permissionTimeout,
+      onTimeout: () => PermissionState.denied,
+    );
     if (!permission.isAuth && !permission.hasAccess) {
       throw PhotoPermissionDenied();
     }

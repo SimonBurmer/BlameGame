@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../state/game_controller.dart';
 import 'error_text.dart';
+import 'snack.dart';
 
 /// Shown when the live connection has dropped.
 ///
@@ -26,9 +27,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
       await widget.controller.reconnect();
     } on Exception catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Still offline: ${friendlyError(e)}')),
-      );
+      showSnack(context, 'Still offline: ${friendlyError(e)}');
     } finally {
       if (mounted) setState(() => _retrying = false);
     }

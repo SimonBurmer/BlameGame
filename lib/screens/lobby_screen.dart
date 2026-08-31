@@ -7,11 +7,13 @@ import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
 import '../ui/app_buttons.dart';
 import '../ui/connection_banner.dart';
+import '../ui/controller_screen.dart';
 import '../ui/error_text.dart';
 import '../ui/gradient_scaffold.dart';
 import '../ui/pill_badge.dart';
 import '../ui/player_avatar.dart';
 import '../ui/player_cosmetics.dart';
+import '../ui/snack.dart';
 import '../ui/tinted_card.dart';
 import 'game_screen.dart';
 
@@ -27,52 +29,40 @@ class LobbyScreen extends StatefulWidget {
   State<LobbyScreen> createState() => _LobbyScreenState();
 }
 
-class _LobbyScreenState extends State<LobbyScreen> {
+class _LobbyScreenState extends State<LobbyScreen>
+    with GameControllerScreen<LobbyScreen> {
+  @override
+  GameController get controller => widget.controller;
   GameController get c => widget.controller;
   late final _sampler = widget.sampler ?? PhotoSampler();
   bool _photoUploaded = false;
   bool _uploading = false;
-  bool _navigated = false;
 
   @override
-  void initState() {
-    super.initState();
-    c.addListener(_onChange);
-  }
-
-  @override
-  void dispose() {
-    c.removeListener(_onChange);
-    super.dispose();
-  }
-
-  void _onChange() {
-    // Guard first: this fires from the WebSocket stream, so the State can be
-    // defunct by now and Navigator.of(context) would throw.
-    if (!mounted) return;
+  bool onControllerChange() {
     // Kicked out: leave the lobby instead of sitting in a room we're not in.
-    if (!_navigated && c.hasLeftRoom) {
-      _navigated = true;
-      final reason = c.removedFromRoom;
-      // Grab the messenger before popping: showing the snackbar on this route
-      // and then popping takes the explanation down with the lobby, so the
-      // kicked player is ejected with no idea why.
-      final messenger = ScaffoldMessenger.of(context);
-      Navigator.of(context).pop();
-      if (reason != null) {
-        messenger.showSnackBar(SnackBar(content: Text(reason)));
-      }
-      return;
+    if (c.hasLeftRoom) {
+      return navigateOnce(() {
+        final reason = c.removedFromRoom;
+        // Grab the messenger before popping: showing the snackbar on this
+        // route and then popping takes the explanation down with the lobby,
+        // so the kicked player is ejected with no idea why.
+        final messenger = ScaffoldMessenger.of(context);
+        Navigator.of(context).pop();
+        if (reason != null) {
+          messenger.showSnackBar(SnackBar(content: Text(reason)));
+        }
+      });
     }
     // When the backend starts the game, move everyone to the game screen.
-    if (!_navigated && c.phase != GamePhase.lobby) {
-      _navigated = true;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => GameScreen(controller: c)),
-      );
-      return;
+    if (c.phase != GamePhase.lobby) {
+      return navigateOnce(() {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => GameScreen(controller: c)),
+        );
+      });
     }
-    setState(() {});
+    return false;
   }
 
   /// Samples random photos and uploads them.
@@ -85,14 +75,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
     if (_uploading) return;
     final hardcore = c.hardcore;
     if (hardcore == null) {
-      _snack('Still loading the game settings — try again in a moment');
+      snack('Still loading the game settings — try again in a moment');
       return;
     }
     setState(() => _uploading = true);
     try {
       final photos = await _sampler.sampleRandomPhotos(count: photoSampleCount);
       if (photos.isEmpty) {
-        _snack('No photos found in your camera roll');
+        snack('No photos found in your camera roll');
         return;
       }
       if (!mounted) return;
@@ -114,11 +104,11 @@ class _LobbyScreenState extends State<LobbyScreen> {
         for (final p in confirmed) p.bytes,
       ]);
       if (mounted) setState(() => _photoUploaded = true);
-      _snack('Added $uploaded photo${uploaded == 1 ? '' : 's'}');
+      snack('Added $uploaded photo${uploaded == 1 ? '' : 's'}');
     } on PhotoPermissionDenied {
-      _snack('Photo access denied — enable it in Settings to add photos');
+      snack('Photo access denied — enable it in Settings to add photos');
     } catch (e) {
-      _snack('Upload failed: $e');
+      snack('Upload failed: $e');
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
@@ -128,7 +118,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     try {
       await c.startGame();
     } catch (e) {
-      _snack('Could not start: $e');
+      snack('Could not start: $e');
     }
   }
 
@@ -147,7 +137,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
         hardcore: hardcore,
       );
     } catch (e) {
-      _snack(friendlyError(e));
+      snack(friendlyError(e));
     }
   }
 
@@ -159,10 +149,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     } catch (_) {
       // Ignored on purpose -- see above.
     }
-    if (mounted && !_navigated) {
-      _navigated = true;
-      Navigator.of(context).pop();
-    }
+    if (mounted) navigateOnce(() => Navigator.of(context).pop());
   }
 
   Future<void> _kick(GamePlayer player) async {
@@ -187,13 +174,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
     try {
       await c.kickPlayer(player.id);
     } catch (e) {
-      _snack('Could not remove ${player.name}: $e');
+      snack('Could not remove ${player.name}: $e');
     }
-  }
-
-  void _snack(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override
@@ -595,9 +577,7 @@ class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
       );
       if (!mounted) return;
       if (next.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No other photos to shuffle in')),
-        );
+        showSnack(context, 'No other photos to shuffle in');
         return;
       }
       setState(() {
@@ -606,9 +586,7 @@ class _PhotoPreviewSheetState extends State<_PhotoPreviewSheet> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Reshuffle failed: $e')));
+      showSnack(context, 'Reshuffle failed: $e');
     } finally {
       if (mounted) setState(() => _reshuffling = false);
     }

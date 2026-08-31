@@ -7,6 +7,7 @@ import '../models/game_models.dart';
 import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
 import '../ui/connection_banner.dart';
+import '../ui/controller_screen.dart';
 import '../ui/error_text.dart';
 import '../ui/gradient_scaffold.dart';
 import '../ui/pill_badge.dart';
@@ -22,14 +23,16 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
+class _GameScreenState extends State<GameScreen>
+    with TickerProviderStateMixin, GameControllerScreen<GameScreen> {
+  @override
+  GameController get controller => widget.controller;
   GameController get c => widget.controller;
 
   int _timeLeft = 0;
   bool _timeExpired = false;
   Timer? _displayTimer;
   int _shownRound = -1;
-  bool _navigated = false;
   String? _myGuessedPlayerId;
   GamePhase? _lastPhase;
 
@@ -46,28 +49,26 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
-    c.addListener(_onChange);
     _syncToRound();
   }
 
   @override
   void dispose() {
-    c.removeListener(_onChange);
     _displayTimer?.cancel();
     _shakeController.dispose();
     super.dispose();
   }
 
-  void _onChange() {
-    if (!mounted) return;
-
-    if (c.phase == GamePhase.finished && !_navigated) {
-      _navigated = true;
-      _displayTimer?.cancel();
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => ResultsScreen(controller: c)),
-      );
-      return;
+  @override
+  bool onControllerChange() {
+    if (c.phase == GamePhase.finished) {
+      final left = navigateOnce(() {
+        _displayTimer?.cancel();
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => ResultsScreen(controller: c)),
+        );
+      });
+      if (left) return true;
     }
 
     // New round started on the backend -> restart the local display countdown.
@@ -85,8 +86,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       if (wrong) _shakeController.forward(from: 0);
     }
     _lastPhase = c.phase;
-
-    setState(() {});
+    return false;
   }
 
   void _syncToRound() {
@@ -131,9 +131,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       // selection too so the player can try again, and say what happened.
       if (!mounted) return;
       setState(() => _myGuessedPlayerId = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Guess failed: ${friendlyError(e)}')),
-      );
+      snack('Guess failed: ${friendlyError(e)}');
     }
   }
 
@@ -163,8 +161,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _topBar() {
     final myScore = c.me?.score ?? 0;
     final colors = context.colors;
-    const pillPadding =
-        EdgeInsets.symmetric(horizontal: 14, vertical: 6);
+    const pillPadding = EdgeInsets.symmetric(horizontal: 14, vertical: 6);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: Row(
@@ -236,8 +233,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
               value: progress,
-              backgroundColor:
-                  colors.onSurfaceStrong.withValues(alpha: 0.1),
+              backgroundColor: colors.onSurfaceStrong.withValues(alpha: 0.1),
               valueColor: AlwaysStoppedAnimation(color),
               minHeight: 6,
             ),
@@ -332,45 +328,72 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           final disabled = c.hasGuessedThisRound || _timeExpired;
           final isSelected =
               c.hasGuessedThisRound && player.id == _myGuessedPlayerId;
-          return GestureDetector(
+          const radius = BorderRadius.all(Radius.circular(14));
+          // One semantics node for the whole chip: the label, the button
+          // role and the tap live here, and the icon and text inside are
+          // excluded so a screen reader announces the chip once rather than
+          // reading out its parts.
+          return Semantics(
+            button: true,
+            enabled: !disabled,
+            selected: isSelected,
+            label: 'Guess ${player.name}',
             onTap: disabled ? null : () => _guess(player),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               decoration: BoxDecoration(
                 color: isSelected
                     ? player.color
                     : player.color.withValues(alpha: disabled ? 0.05 : 0.15),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: radius,
                 border: Border.all(
                   color: player.color.withValues(alpha: isSelected ? 1.0 : 0.3),
                   width: isSelected ? 2 : 1,
                 ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    player.avatar,
-                    color: isSelected ? white : player.color,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    player.name,
-                    style: TextStyle(
-                      color: isSelected
-                          ? white
-                          : white.withValues(alpha: 0.9),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
+              // Transparent Material *inside* the container, so the splash is
+              // painted above the chip's fill instead of underneath it. The
+              // padding moved in with it so the whole chip is the tap target.
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  onTap: disabled ? null : () => _guess(player),
+                  borderRadius: radius,
+                  excludeFromSemantics: true,
+                  child: ExcludeSemantics(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            player.avatar,
+                            color: isSelected ? white : player.color,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            player.name,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? white
+                                  : white.withValues(alpha: 0.9),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (isSelected) ...[
+                            const SizedBox(width: 6),
+                            Icon(Icons.check_circle, color: white, size: 16),
+                          ],
+                        ],
+                      ),
                     ),
                   ),
-                  if (isSelected) ...[
-                    const SizedBox(width: 6),
-                    Icon(Icons.check_circle, color: white, size: 16),
-                  ],
-                ],
+                ),
               ),
             ),
           );

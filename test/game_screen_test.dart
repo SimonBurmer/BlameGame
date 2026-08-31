@@ -139,4 +139,30 @@ void main() {
     await unmount(tester);
     h.controller.dispose();
   });
+
+  testWidgets('guess chips are buttons to a screen reader, not plain text',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    final h = await inRound(tester);
+
+    // They were bare GestureDetectors, which VoiceOver reads out as static
+    // text with no hint that it can be tapped.
+    expect(
+      tester.getSemantics(find.bySemanticsLabel('Guess Jake')),
+      matchesSemantics(
+        label: 'Guess Jake',
+        isButton: true,
+        isEnabled: true,
+        hasEnabledState: true,
+        hasSelectedState: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+        isFocusable: true,
+      ),
+    );
+
+    handle.dispose();
+    await unmount(tester);
+    h.controller.dispose();
+  });
 }

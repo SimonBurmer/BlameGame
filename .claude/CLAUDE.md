@@ -8,27 +8,32 @@ guesses; rounds tally into a final leaderboard.
 
 - **Frontend:** Flutter (Dart SDK `^3.11.5`), Material 3. Code in `lib/`.
 - **Backend:** FastAPI (Python 3.12), in-memory state + WebSockets. Code in `backend/app/`.
-- **Deploy:** backend targets Railway (`backend/railway.json`, `Procfile`). Single replica.
+- **Deploy:** backend targets Railway (`backend/railway.json`; the start command lives there, there is no Procfile). Single replica.
 
 ## Architecture
 
 ### Flutter (`lib/`)
 Layered: `config → models → services → state → screens`, with `theme/` and
 `ui/` holding presentation shared across screens.
-- `config.dart` — `apiBase` from `String.fromEnvironment('API_BASE', default 'http://localhost:8000')`; `wsBase` derived by swapping `http`→`ws`. Production URL is passed via `--dart-define=API_BASE=<url>`.
+- `config.dart` — `apiBase` from `String.fromEnvironment('API_BASE')`; `wsBase` derived by swapping `http`→`ws`. The **default is build-mode dependent**: localhost in debug/profile so `flutter run` just works, and **empty in release**, because an IPA quietly aimed at the device's own loopback fails every call with nothing to diagnose it by (and iOS ATS blocks cleartext HTTP regardless). `apiBaseProblem` turns that, and any non-https release base, into a "Not configured" screen at startup instead of a spinner. A release build must carry `--dart-define=API_BASE=https://…`.
 - `models/game_models.dart` — `GamePlayer`, `PhotoInfo`, and a sealed `GameEvent` hierarchy (deserialize-only). **Pure Dart, no Flutter import** — per-player colours/avatars live in `ui/player_cosmetics.dart` instead, derived from a platform-stable hash (`String.hashCode` differs between the VM and dart2js, so the same player looked different on iOS and web).
 - `services/api_client.dart` — thin `http` REST wrapper; injectable `http.Client` for tests.
 - `services/game_socket.dart` — `web_socket_channel`, exposes `Stream<GameEvent>`. A `GameSocketFactory` typedef is injected into the controller so tests can drive state with a fake socket.
 - `state/game_controller.dart` — `ChangeNotifier` (no Provider/Riverpod/Bloc). One instance is created in `HomeScreen`, passed by constructor down through Lobby → Game → Results, and **disposed by `HomeScreen` when the pushed route returns** (it awaits the `push`) — otherwise every game leaks a live WebSocket. Identity lives in a non-nullable `GameSession` created at join time, so there are no `roomCode!` force-unwraps and a half-joined controller is unrepresentable. `connectionError` + `reconnect()` surface a dropped socket rather than freezing the game.
 - `theme/app_theme.dart` — `buildAppTheme()` plus an `AppColors` `ThemeExtension`; read it via `context.colors`.
-- `ui/` — cross-screen presentation: `player_cosmetics.dart`, `result_banner.dart`, `connection_banner.dart`, `error_text.dart` (`friendlyError` unwraps the backend's `{"detail": ...}` so raw JSON never reaches a player).
+- `ui/` — cross-screen presentation: `player_cosmetics.dart`, `result_banner.dart`, `connection_banner.dart`, `snack.dart`, `error_text.dart` (`friendlyError` unwraps the backend's `{"detail": ...}` so raw JSON never reaches a player), and:
+  - `controller_screen.dart` — the `GameControllerScreen` mixin every controller-driven screen uses. It owns the listener wiring, the `mounted` guard (the callback fires from the WebSocket stream, so `Navigator.of(context)` can throw) and `navigateOnce`, which latches route pushes so an event burst can't push the same screen twice. Each of those was hand-rolled in three screens; TASK-46 was the latch going wrong.
+  - `tinted_card.dart` — paints its fill through a **`Material`**, not a `BoxDecoration`. Ink splashes and `ListTile` backgrounds are drawn on the nearest `Material` ancestor, so a decorated box over it swallows them — and Flutter asserts on exactly that arrangement.
 - `screens/` — `home`, `lobby`, `game`, `results`.
+- `main.dart` — `PhotoBlameApp`, plus the misconfigured-build screen `config.dart` gates on.
 
 ### Backend (`backend/app/`)
 Pure logic under thin I/O layers:
 - `game.py`, `scoring.py` — pure game rules + scoring (well unit-tested).
+- `models.py` — the `Player` / `Photo` / `Round` / `Room` dataclasses and the `RoomState` enum everything else operates on.
+- `photo_meta.py` — strips EXIF (and with it GPS), XMP and PNG text chunks from uploads. Structural: it walks JPEG segment and PNG chunk headers and drops the metadata ones, so there is no decode, no re-encode and no image library in the trust path for attacker-supplied bytes. **The server owns this guarantee, not the client** — the iOS client's re-encode drops EXIF as a side effect, but Android/web/curl would not.
 - `main.py` — FastAPI routes (REST + one WS route `/ws/{code}/{player_id}`).
-- `store.py` — process-wide in-memory `GameStore` singleton (`dict[code→Room]`). **State is lost on restart and can't be shared across replicas.** Rooms carry `last_active` and are evicted after `ROOM_TTL_SECONDS` (6h) idle by a **lazy sweep on create/lookup** — no background task, since only a request can grow the store. `time_fn`/`on_evict` are injectable; `main.py` wires `on_evict` to delete `uploads/{code}/`, refusing any code that resolves outside `UPLOAD_DIR`. `DELETE /rooms/{code}?host_id=` ends a room explicitly.
+- `store.py` — process-wide in-memory `GameStore` singleton (`dict[code→Room]`). **State is lost on restart and can't be shared across replicas.** Rooms carry `last_active` and are evicted after `ROOM_TTL_SECONDS` (6h) idle by a **lazy sweep on create/lookup** — no background task, since only a request can grow the store. Capped at `MAX_ROOMS` (500), swept first so an expired store doesn't read as a flood; past it `POST /rooms` is a 503. `POST /rooms` is unauthenticated and every room is in RAM, so without the cap a create loop kills the container and takes every live game with it. `time_fn`/`on_evict` are injectable; `main.py` wires `on_evict` to delete `uploads/{code}/`, refusing any code that resolves outside `UPLOAD_DIR`. `DELETE /rooms/{code}?host_id=` ends a room explicitly.
 - `connection.py` — `ConnectionManager`, broadcasts events to a room's sockets.
 - `timer.py` — `RoundDriver` drives round timing (sleep injectable for tests). It holds on the reveal for `REVEAL_SECONDS` before advancing; without that pause `round_revealed` and the next `round_started` land in the same tick and players never see whose photo it was. It re-checks the room before revealing, so a round that moved underneath it isn't announced with the wrong photo.
 - Photos are written to local disk under `uploads/{code}/` (ephemeral on Railway).
@@ -39,16 +44,28 @@ Pure logic under thin I/O layers:
 ```sh
 flutter pub get
 flutter analyze
-flutter test                     # currently 57 tests
+flutter test                     # currently 105 tests
 flutter run                      # needs a simulator/device
+
+# On a real simulator, against a real backend (start it first):
+flutter test integration_test/app_test.dart -d "iPhone 17" \
+  --dart-define=API_BASE=http://localhost:8000
+scripts/run-two-device-test.sh   # two simulators in one room at once
 ```
+`test/` fakes the socket, the API client and the camera roll, so it cannot catch
+a plugin that does not link or a build pointed at the wrong backend;
+`integration_test/` is what covers those. Neither can exercise the camera-roll
+picker: the first permission request pops a system alert, `WidgetTester` injects
+pointer events straight into the engine rather than through the window server,
+and a pre-granted TCC decision does not survive the reinstall `flutter test`
+performs. Both suites detect that and contribute the photo over the API instead.
 
 ### Backend
 ```sh
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                           # currently 85 tests
+pytest                           # currently 175 tests
 ruff check .                     # pyflakes (F) only; configured in backend/pyproject.toml
 ```
 
@@ -73,6 +90,23 @@ Every launcher icon is generated — never hand-edit the PNGs, regenerate them.
   the pieces are teal, gold, white and a dark navy), and `logo_mark.svg` keeps only the
   largest dozen pieces, because sixty is texture at 1024px and mush at the 96px the
   home screen draws the mark at.
+- The **launch screens** are generated by the same script. They are drawn by the OS
+  before any Dart runs, so they cannot read `AppColors`: the iOS storyboard and
+  `android/app/src/main/res/values/colors.xml` each hardcode `bgTop` (`#1A1A2E`) and
+  have to be kept in step with `app_theme.dart` by hand. Both were the untouched
+  Flutter default — a white ground behind a 1x1 transparent image — so every cold
+  start flashed white before the dark UI appeared.
+
+## iOS release checklist (what TestFlight needs)
+
+- `ios/Runner/PrivacyInfo.xcprivacy` declares what the app collects (photos, the
+  display name — both unlinked, neither tracking). `Flutter.framework` and
+  `photo_manager` ship their own manifests for the required-reason APIs they call,
+  and Apple aggregates all three, which is why the app's own
+  `NSPrivacyAccessedAPITypes` is deliberately empty.
+- `ITSAppUsesNonExemptEncryption` is `false` in `Info.plist` (HTTPS only, which is
+  exempt). Without it every upload stops to ask for export compliance by hand.
+- A release build **must** carry `--dart-define=API_BASE=https://…`; see `config.dart`.
 
 ## Tickets / Backlog
 
@@ -125,7 +159,11 @@ Don't simplify away input validation at trust boundaries, error handling, or sec
 
 - **iOS plugins are linked with Swift Package Manager, not CocoaPods.** CocoaPods was
   deintegrated once every plugin became a Swift Package; there is no `ios/Podfile` and
-  `brew install cocoapods` is not part of setup. Plugins are statically linked into
+  `brew install cocoapods` is not part of setup. TASK-25 left the Xcode project half
+  deintegrated — a tracked `Podfile`, `Pods-*.xcconfig` base configurations on the
+  RunnerTests target and two `[CP] Check Pods Manifest.lock` phases that fail the
+  build when `ios/Pods` is absent — so a fresh clone could not build iOS. All of it is
+  gone now; if any of it comes back, something re-ran `pod install`. Plugins are statically linked into
   `Runner.debug.dylib` rather than embedded under `Runner.app/Frameworks/`, so check
   there (`nm Runner.app/Runner.debug.dylib | grep -i <plugin>`) when verifying a plugin
   is linked — the top-level `Runner` binary is just a thin launcher stub.

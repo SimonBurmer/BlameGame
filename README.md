@@ -3,7 +3,7 @@
 Photo Blame is a party game: everyone throws photos from their camera roll into a
 room, and each round you guess whose photo is on screen — faster guesses score more.
 
-**Website:** [photoblame.com](https://photoblame.com) · **Contact:** hello@photoblame.com
+**Website:** [photo-blame.com](https://photo-blame.com) · **Contact:** hello@photo-blame.com
 
 ## Getting Started
 
@@ -116,12 +116,35 @@ devices booted`) to switch which one is frontmost.
 ### Running tests
 
 ```sh
-# Flutter (57 tests)
+# Flutter (105 tests)
 flutter test
 flutter analyze                              # static analysis, run alongside tests
 
-# Backend (73 tests)
+# Backend (162 tests)
 cd backend
 pytest
 ruff check .                                 # pyflakes-only lint (see backend/pyproject.toml)
 ```
+
+### End-to-end tests (real simulator, real backend)
+
+`flutter test` fakes the socket, the API and the camera roll, so it cannot catch
+a plugin that fails to link or a build pointed at the wrong backend. Two suites
+run on real devices instead. Start the backend first.
+
+```sh
+# One device hosts a game; the second player is driven over HTTP from inside
+# the test, which produces the same broadcasts a second phone would.
+flutter test integration_test/app_test.dart -d "iPhone 17" \
+  --dart-define=API_BASE=http://localhost:8000
+
+# Two simulators in one room at once, both reaching the same leaderboard.
+scripts/run-two-device-test.sh
+```
+
+The camera-roll picker is the one path these skip: the first photo-permission
+request pops a system alert, and `WidgetTester` injects pointer events straight
+into the engine rather than through the window server, so nothing in the test
+can answer it. Both suites detect that, say so, and contribute the photo over
+the API instead. To exercise the real picker, grant the permission by hand once
+on the device and run the app normally.

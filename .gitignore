@@ -51,6 +51,9 @@ app.*.map.json
 # the repo root; backend/.gitignore only covers backend/uploads/, so without
 # this real photos from test games get staged.
 /uploads/
+
+# The marketing site is a separate npm workspace under apps/. Its sources live
+# on their own branch; what leaks onto every branch is its build output.
 node_modules/
 apps/website/.next/
 apps/website/out/

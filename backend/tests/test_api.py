@@ -801,6 +801,19 @@ def test_leaving_mid_game_does_not_leave_a_round_on_a_departed_player(client):
         assert room.player_by_id(rnd.photo.owner_id) is not None
 
 
+def test_room_creation_is_refused_when_the_store_is_full(client):
+    # A 503 rather than a silent OOM: the process holds every room in memory.
+    original = store._max_rooms
+    store._max_rooms = 1
+    try:
+        assert client.post("/rooms").status_code == 200
+        resp = client.post("/rooms")
+        assert resp.status_code == 503
+        assert "capacity" in resp.json()["detail"]
+    finally:
+        store._max_rooms = original
+
+
 # --- serving photos --------------------------------------------------------
 
 def test_uploaded_photo_can_be_fetched_back(client):
@@ -811,6 +824,28 @@ def test_uploaded_photo_can_be_fetched_back(client):
     resp = client.get(url)
     assert resp.status_code == 200
     assert resp.content == b"\xff\xd8\xff_fake_jpeg"
+
+
+def test_an_uploaded_photo_comes_back_without_its_exif(client):
+    """GPS in EXIF would be served to every player in the room.
+
+    The iOS client re-encodes and happens to drop EXIF already, but that is a
+    property of one client on one platform — the server is what has to hold
+    the guarantee for every caller.
+    """
+    code = client.post("/rooms").json()["code"]
+    host_id = _join(client, code, "Emma")
+    with_gps = (
+        b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00"
+        b"\xff\xe1\x00\x1cExif\x00\x00II*\x00\x08\x00\x00\x00"
+        b"\x01\x00\x25\x88\x04\x00\x01\x00\x00\x00"
+        b"\xff\xda\x00\x08body\xff\xd9"
+    )
+    url = _upload_photo(client, code, host_id, content=with_gps).json()["url"]
+
+    served = client.get(url).content
+    assert b"Exif" not in served
+    assert b"body" in served, "the picture itself must survive"
 
 
 def test_png_round_trips_as_png(client):

@@ -5,6 +5,11 @@ RAM: it is lost on server restart, which is acceptable for short-lived party
 games. Because it is in-memory, the backend must run as a SINGLE instance
 (no horizontal scaling) — replicas would not share this dict.
 
+The store is capped at `MAX_ROOMS`. Room creation is unauthenticated and this
+process holds every room in RAM, so without a ceiling a loop of POST /rooms
+grows it until the platform kills the container — taking every live game with
+it. The 6h idle sweep is far too slow to be the answer to that on its own.
+
 Rooms are evicted after `ROOM_TTL_SECONDS` of inactivity. The sweep is lazy —
 it runs on room create/lookup rather than on a background task — because the
 only thing that grows the store is a request, so there is nothing to clean up
@@ -24,6 +29,12 @@ from app.models import Room
 # evicting a room out from under live players is worse than holding some RAM.
 ROOM_TTL_SECONDS = 6 * 60 * 60
 
+# Ceiling on concurrent rooms. Well above any plausible real load for a single
+# in-memory instance, and low enough that a flood is refused long before the
+# process runs out of memory. A room with 12 players and 120 photo records is
+# a few KB, so this is bounded by the uploads on disk rather than by RAM.
+MAX_ROOMS = 500
+
 EvictCallback = Callable[[str], None]
 TimeFn = Callable[[], float]
 
@@ -36,16 +47,22 @@ class RoomNotFound(Exception):
     """Raised when a room code does not exist."""
 
 
+class StoreFull(Exception):
+    """Raised when the store is already holding `MAX_ROOMS` rooms."""
+
+
 class GameStore:
     def __init__(
         self,
         *,
         ttl_seconds: float = ROOM_TTL_SECONDS,
+        max_rooms: int = MAX_ROOMS,
         time_fn: TimeFn = time.time,
         on_evict: Optional[EvictCallback] = None,
     ) -> None:
         self._rooms: Dict[str, Room] = {}
         self._ttl = ttl_seconds
+        self._max_rooms = max_rooms
         self._time_fn = time_fn
         self.on_evict = on_evict
 
@@ -72,7 +89,11 @@ class GameStore:
                 return code
 
     def create_room(self, hardcore: bool = False) -> Room:
+        # Sweep first: the cap should reject a genuine flood, not a store full
+        # of rooms that expired hours ago.
         self.sweep()
+        if len(self._rooms) >= self._max_rooms:
+            raise StoreFull(f"at capacity ({self._max_rooms} rooms)")
         code = self._generate_code()
         room = Room(code=code, last_active=self._time_fn(), hardcore=hardcore)
         self._rooms[code] = room
@@ -88,6 +109,11 @@ class GameStore:
         # so a room with players in it never ages out underneath them.
         room.last_active = self._time_fn()
         return room
+
+
+    @property
+    def room_count(self) -> int:
+        return len(self._rooms)
 
 
 # Process-wide singleton used by the API layer. `on_evict` is wired up in

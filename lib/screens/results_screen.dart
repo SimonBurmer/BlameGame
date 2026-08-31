@@ -4,6 +4,7 @@ import '../models/game_models.dart';
 import '../state/game_controller.dart';
 import '../theme/app_theme.dart';
 import '../ui/app_buttons.dart';
+import '../ui/controller_screen.dart';
 import '../ui/error_text.dart';
 import '../ui/gradient_scaffold.dart';
 import '../ui/player_avatar.dart';
@@ -18,51 +19,37 @@ class ResultsScreen extends StatefulWidget {
   State<ResultsScreen> createState() => _ResultsScreenState();
 }
 
-class _ResultsScreenState extends State<ResultsScreen> {
+class _ResultsScreenState extends State<ResultsScreen>
+    with GameControllerScreen<ResultsScreen> {
+  @override
   GameController get controller => widget.controller;
   bool _resetting = false;
-  bool _navigated = false;
 
   List<GamePlayer> get _ranked => controller.finalRankings;
 
   @override
-  void initState() {
-    super.initState();
-    controller.addListener(_onChange);
-  }
-
-  @override
-  void dispose() {
-    controller.removeListener(_onChange);
-    super.dispose();
-  }
-
-  void _onChange() {
-    if (!mounted) return;
+  bool onControllerChange() {
     // Any player (not just the host who triggered it) lands back in the
     // lobby once the backend confirms the reset over the WebSocket.
-    if (!_navigated && controller.phase == GamePhase.lobby) {
-      _navigated = true;
+    // Everything else just rebuilds: without that the leaderboard is a frozen
+    // snapshot and late-arriving results never render.
+    if (controller.phase != GamePhase.lobby) return false;
+    return navigateOnce(() {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => LobbyScreen(controller: controller)),
       );
-      return;
-    }
-    // Without this the leaderboard is a frozen snapshot: late-arriving
-    // results and connection changes would never render.
-    setState(() {});
+    });
   }
 
   Future<void> _startNewRound() async {
     setState(() => _resetting = true);
     try {
       await controller.resetRoom();
-      // Navigation happens in _onChange once the room_reset event arrives.
+      // Navigation happens in onControllerChange once room_reset arrives.
     } catch (e) {
       if (!mounted) return;
       setState(() => _resetting = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not start new round: ${friendlyError(e)}')));
+      snack('Could not start new round: ${friendlyError(e)}');
     }
   }
 

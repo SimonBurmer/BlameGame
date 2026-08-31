@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.store import GameStore, RoomNotFound
+from app.store import GameStore, RoomNotFound, StoreFull
 
 
 def test_create_room_returns_five_char_code():
@@ -103,3 +103,42 @@ def test_delete_unknown_room_raises():
     store = GameStore()
     with pytest.raises(RoomNotFound):
         store.delete_room("ZZZZZ")
+
+
+# --- capacity --------------------------------------------------------------
+
+def test_the_store_refuses_to_grow_past_its_cap():
+    # POST /rooms is unauthenticated and every room lives in this process's
+    # RAM, so without a ceiling a create loop kills the container and takes
+    # every live game with it.
+    store = GameStore(max_rooms=3)
+    for _ in range(3):
+        store.create_room()
+
+    with pytest.raises(StoreFull):
+        store.create_room()
+
+
+def test_expired_rooms_make_room_for_new_ones():
+    # The cap must reject a real flood, not a store full of rooms that aged
+    # out hours ago.
+    now = [1000.0]
+    store = GameStore(ttl_seconds=60, max_rooms=2, time_fn=lambda: now[0])
+    store.create_room()
+    store.create_room()
+
+    now[0] += 61
+    fresh = store.create_room()
+
+    assert store.room_count == 1
+    assert store.get_room(fresh.code) is fresh
+
+
+def test_deleting_a_room_frees_capacity():
+    store = GameStore(max_rooms=1)
+    first = store.create_room()
+    with pytest.raises(StoreFull):
+        store.create_room()
+
+    store.delete_room(first.code)
+    assert store.create_room() is not None

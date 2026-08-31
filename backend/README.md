@@ -9,7 +9,7 @@ updates are pushed over **WebSockets**.
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"     # installs runtime + test deps
-pytest                       # 73 tests, no server needed
+pytest                       # 175 tests, no server needed
 uvicorn app.main:app --reload
 # → http://127.0.0.1:8000/docs
 ```
@@ -76,7 +76,35 @@ Two gotchas, both of which have cost real debugging time:
   short-lived party games. (For persistence later: attach a Railway Volume and
   point `UPLOAD_DIR` at it, plus a real store for game state.)
 - **CORS is open** (`allow_origins=["*"]`) so the Flutter web/mobile client can
-  call it from any origin.
+  call it from any origin. No cookies or `Authorization` headers are used, and
+  `allow_credentials` is off, so an open origin list grants nothing.
+- **Rooms are capped** at `MAX_ROOMS` (see `app/store.py`) and creation is
+  refused with a 503 past that. `POST /rooms` is unauthenticated and every room
+  lives in this process's memory, so without a ceiling a create loop kills the
+  container and takes every live game with it.
+
+## How player photos are handled
+
+This is the part with real privacy consequences, so the model is written down
+rather than left to be inferred:
+
+- **Access is by unguessable URL.** A photo lives at
+  `/rooms/<code>/photos/<12 hex chars>.<ext>` and that endpoint is not
+  authenticated — anyone holding the URL can fetch it. That is deliberate: the
+  URL is only ever handed to players of that room, over their own authenticated
+  WebSocket, and `Image.network` has no way to send a credential. Treat the URL
+  itself as the secret.
+- **Metadata is stripped on upload.** EXIF (and with it GPS coordinates), XMP
+  and PNG text chunks are removed before the bytes touch disk — see
+  `app/photo_meta.py`. The iOS client also happens to re-encode and drop EXIF,
+  but that is one client on one platform; the server holds the guarantee for
+  every caller.
+- **Retention is the room's lifetime.** `uploads/<code>/` is deleted when the
+  room is deleted or swept for inactivity (6h), and Railway's filesystem is
+  ephemeral anyway, so a redeploy clears everything. Nothing is backed up and
+  no photo outlives its game.
+- **Uploads are bounded**: 8 MB per file, 10 per player, JPEG/PNG confirmed by
+  magic bytes rather than the client's `Content-Type`, and lobby-only.
 
 ## Pointing the Flutter app at this backend
 

@@ -3,7 +3,7 @@
 Photo Blame is a party game: everyone throws photos from their camera roll into a
 room, and each round you guess whose photo is on screen — faster guesses score more.
 
-**Website:** [photo-blame.com](https://photo-blame.com) · **Contact:** hello@photo-blame.com
+**Website:** [photoblame.com](https://photoblame.com) · **Contact:** hello@photoblame.com
 
 ## Getting Started
 
